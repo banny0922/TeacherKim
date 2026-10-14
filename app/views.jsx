@@ -3,7 +3,7 @@ import { Fragment, useState } from 'react';
 import { sb, today, saved } from './sb';
 import { holidayName } from './holidays';
 import { readSheets, readTable } from './readTable';
-import { CalendarDays, PenLine, ListChecks, StickyNote, BookOpen, Users, MessageCircle, Upload, Download, Trash2 } from 'lucide-react';
+import { CalendarDays, PenLine, ListChecks, StickyNote, BookOpen, Users, MessageCircle, Upload, Download, Trash2, Plus, Pencil } from 'lucide-react';
 
 const fd = (e) => { e.preventDefault(); return Object.fromEntries(new FormData(e.target)); };
 const Del = ({ onClick }) => <button className="x" onClick={onClick}>삭제</button>;
@@ -292,11 +292,6 @@ export function Meetings({ db, add, del, upd, focus }) {
 }
 
 /* 학급명렬 */
-const SAMPLE_NAMES = ['강민호', '서지안', '윤하늘', '한도현', '임소율', '조예린', '백승우', '남지호', '문채원', '류시온', '권나윤', '배준영', '신하은', '황지우', '안서진', '송태오', '홍다온', '전유나', '고은찬', '유서아', '노하람', '장세빈'];
-// [번호, 1급, 3급, 4급, 6급]  (번호 배치 1~10번 / 50~61번, 점수 분포는 샘플 기록부 모양)
-const SAMPLE_SCORES = [[1, 100, 90, '결석', 100], [2, 110, 110, 100, 100], [3, 100, 90, 120, 100], [4, 110, 110, 120, 100], [5, 100, 100, 100, 110], [6, 100, 70, 100, 90], [7, 100, 80, 100, 70], [8, 80, 100, 110, 50], [9, 90, 80, 100, 90], [10, 90, 110, 120, 100],
-  [50, 60, 70, 70, 50], [51, 110, 100, 110, '결석'], [52, 80, 110, 120, 110], [53, 90, 100, 100, 110], [54, 100, 110, 120, 110], [55, 110, 100, 90, 50], [56, 110, 110, 120, 90], [57, 100, 100, 100, 80], [58, 110, 100, 120, 110], [59, 110, 100, 110, 110], [60, 110, 100, 100, 100], [61, 100, 90, 100, 90]];
-
 export function Roster({ S, add, del, upd, load }) {
   const importXlsx = async (file) => {
     if (!file) return;
@@ -329,21 +324,6 @@ export function Roster({ S, add, del, upd, load }) {
     [1, 2].forEach((k) => { if (loose.length === 0 && (last + k < 50 || last >= 50)) rows.push({ n: last + k }); });
     return rows;
   };
-  const fillSample = async () => {
-    if (S.length && !confirm('이미 학생이 있습니다. 번호가 겹치지 않는 샘플 학생만 추가로 넣을까요?')) return;
-    const rows = SAMPLE_SCORES.map(([num], i) => ({ num, name: SAMPLE_NAMES[i] })).filter((x) => !used.has(x.num));
-    if (!rows.length) return alert('샘플 번호(1~10, 50~61)가 이미 모두 사용 중입니다.');
-    const st = await sb.from('students').insert(rows).select();
-    if (st.error) return alert(st.error.message);
-    const tt = await sb.from('tests').insert(['1급', '3급', '4급', '6급'].map((name) => ({ subject: '받아쓰기', name, date: today() }))).select();
-    if (tt.error) return alert(tt.error.message);
-    const tests = ['1급', '3급', '4급', '6급'].map((n) => tt.data.find((t) => t.name === n));
-    const byNum = Object.fromEntries(st.data.map((x) => [x.num, x.id]));
-    const scores = SAMPLE_SCORES.filter(([num]) => byNum[num]).flatMap(([num, ...v]) => v.map((x, i) => ({ test_id: tests[i].id, student_id: byNum[num], score: typeof x === 'number' ? x : null, mark: typeof x === 'number' ? null : x })));
-    const sc = await sb.from('scores').upsert(scores);
-    if (sc.error) return alert(sc.error.message);
-    await load(); saved();
-  };
   const clearAll = async () => {
     if (!S.length || !confirm('학생 ' + S.length + '명과 그 성적·체크·상담 기록이 모두 지워집니다. 정말 지울까요?')) return;
     if (!confirm('되돌릴 수 없습니다. 한 번 더 확인합니다. 모두 지울까요?')) return;
@@ -365,10 +345,6 @@ export function Roster({ S, add, del, upd, load }) {
   );
   return (
     <>
-      <div className="sampleBar">
-        <button type="button" onClick={fillSample}>샘플 학생·성적 채우기 (테스트용)</button>
-        <span>1~10번, 50~61번 학생 22명과 받아쓰기 1급·3급·4급·6급 점수를 임의로 넣습니다.</span>
-      </div>
       <details className="bulk">
         <summary>이름 여러 명 한꺼번에 붙여넣기</summary>
         <form onSubmit={(e) => {
@@ -572,9 +548,32 @@ export function Memos({ db, add, del, upd, focus }) {
 
 /* 성적: 과목(시트) 탭 + 학생 × 평가(날짜) 표. 숫자 또는 '결석' 같은 글자, 점수 색 구분, 맨 아래 평균 */
 export function Grades({ db, S, add, del, upd, setDb, load }) {
-  const subjects = [...new Set(db.tests.map((t) => t.subject).filter(Boolean))];
+  const [extra, setExtra] = useState([]); // 평가를 아직 만들지 않은 새 과목(평가를 추가하면 저장된다)
+  const subjects = [...new Set([...db.tests.map((t) => t.subject).filter(Boolean), ...extra])];
   const [sub, setSub] = useState('');
   const cur = subjects.includes(sub) ? sub : subjects[0] ?? '';
+  const addSubject = () => {
+    const n = (prompt('추가할 과목 이름을 입력하세요. (예: 수학)') || '').trim();
+    if (!n) return;
+    if (!subjects.includes(n)) setExtra((e) => [...e, n]);
+    setSub(n);
+  };
+  const [editSub, setEditSub] = useState(false); // 지금 보는 과목 탭을 눌러서 이름을 고치는 중
+  const renameSubject = async (raw) => {
+    setEditSub(false);
+    const n = (raw || '').trim();
+    if (!n || n === cur) return;
+    if (subjects.includes(n) && !confirm('「' + n + '」 과목이 이미 있습니다. 두 과목을 합칠까요?')) return;
+    const hasSaved = db.tests.some((t) => t.subject === cur);
+    if (hasSaved) {
+      const { error } = await sb.from('tests').update({ subject: n }).eq('subject', cur);
+      if (error) return alert(error.message);
+      await load(); saved();
+    }
+    // 평가가 있는 과목은 저장된 이름으로, 아직 평가가 없는 새 과목은 임시 목록에서 새 이름으로 바꾼다
+    setExtra((e) => [...e.filter((x) => x !== cur && x !== n), ...(hasSaved ? [] : [n])]);
+    setSub(n);
+  };
   // 학년도 월 탭(3~2): 시험은 매달 있으므로 달별로 모아 본다
   const now = new Date();
   const sy = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();
@@ -598,13 +597,17 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
     const a = db.scores.filter((x) => x.test_id === tid && !x.mark && x.score !== null && x.score !== undefined && x.score !== '').map((x) => +x.score);
     return a.length ? (a.reduce((p, c) => p + c, 0) / a.length).toFixed(2) : '';
   };
+  // 점수 칸에는 숫자(0 이상) 또는 '결석'만 넣을 수 있다
+  const okScore = (v) => v === '' || v === '결석' || (/^[0-9.]+$/.test(v) && Number.isFinite(+v));
   const save = (test_id, student_id, raw) => {
     const v = raw.trim();
+    if (!okScore(v)) { alert('점수는 숫자 또는 「결석」만 입력할 수 있습니다.'); return false; }
     const num = v !== '' && !Number.isNaN(+v);
     const score = num ? +v : null, mark = v === '' || num ? null : v;
-    if (String(text(test_id, student_id)) === v) return;
+    if (String(text(test_id, student_id)) === v) return true;
     setDb((d) => ({ ...d, scores: [...d.scores.filter((x) => !(x.test_id === test_id && x.student_id === student_id)), { test_id, student_id, score, mark }] }));
     sb.from('scores').upsert({ test_id, student_id, score, mark }).then(({ error }) => (error ? alert(error.message) : saved()));
+    return true;
   };
   // 번호가 1~15번, 50번~처럼 크게(10 이상) 건너뛰면 그 사이에 빈 줄을 하나 둔다(샘플의 기록부처럼 한 표에서 묶음만 나눔)
   const ordered = [...S].sort((a, b) => (a.num ?? 1e9) - (b.num ?? 1e9));
@@ -635,7 +638,8 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
     for (const sh of usable) {
       const head = sh.rows[sh.hi];
       const ci = head.findIndex((c) => c.includes('번호')), cn = head.findIndex((c) => c.includes('이름'));
-      const cols = head.map((h, i) => ({ h, i })).filter(({ h, i }) => h && i !== ci && i !== cn);
+      const body = sh.rows.slice(sh.hi + 1);
+      const cols = head.map((h, i) => ({ h, i })).filter(({ h, i }) => h && i !== ci && i !== cn && body.some((rw) => (rw[i] ?? '').trim() !== ''));
       if (!cols.length) { report.push(sh.sheet + ': 평가 열 없음'); continue; }
       const ids = {};
       for (const { h } of cols) {
@@ -648,22 +652,42 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
         }
         ids[h] = t.id;
       }
-      const out = []; let miss = 0;
+      const out = []; let miss = 0, bad = 0;
       sh.rows.slice(sh.hi + 1).forEach((r) => {
         const st = (ci >= 0 && byNum[+r[ci]]) || (cn >= 0 && byName[r[cn]]);
         if (!st) { if (r.some(Boolean)) miss++; return; }
         cols.forEach(({ h, i }) => {
           const v = (r[i] ?? '').trim();
           if (v === '') return;
-          const num = !Number.isNaN(+v);
+          if (!okScore(v)) { bad++; return; }
+          const num = v !== '결석';
           out.push({ test_id: ids[h], student_id: st.id, score: num ? +v : null, mark: num ? null : v });
         });
       });
       if (out.length) { const res = await sb.from('scores').upsert(out); if (res.error) return alert(res.error.message); }
-      report.push(sh.sheet + ': 평가 ' + cols.length + '개, 점수 ' + out.length + '개' + (miss ? ' (학생 못 찾음 ' + miss + '줄)' : ''));
+      report.push(sh.sheet + ': 평가 ' + cols.length + '개, 점수 ' + out.length + '개' + (miss ? ' (학생 못 찾음 ' + miss + '줄)' : '') + (bad ? ' (숫자·결석이 아니라 건너뜀 ' + bad + '칸)' : ''));
     }
     await load(); saved(); setSub(usable[0].sheet); setMo(+date.slice(5, 7));
     alert(['저장했습니다.', '', ...report].join(NL));
+  };
+  // 양식 받기: 우리 반 학생(번호·이름)이 미리 들어 있고, 있는 점수도 함께 담긴 엑셀. 채워서 다시 올리면 된다
+  const downloadTemplate = async () => {
+    if (!S.length) return alert('먼저 학급명렬에서 학생을 등록하세요. 양식에 우리 반 학생이 미리 들어갑니다.');
+    const { default: writeXlsxFile } = await import('write-excel-file/browser');
+    const subs = subjects.length ? subjects : ['받아쓰기'];
+    const head = (v) => ({ value: v, fontWeight: 'bold', backgroundColor: '#eef0f7', align: 'center' });
+    const sheets = subs.map((sj) => {
+      const ts = db.tests.filter((t) => t.subject === sj && inMonth(t, mo)).sort((a, b) => tDate(a).localeCompare(tDate(b)));
+      const spare = ts.length ? 2 : 3;
+      const heads = [...ts.map((t) => t.name), ...Array.from({ length: spare }, (_, i) => (ts.length ? '' : '평가' + (i + 1)))];
+      const data = [[head('번호'), head('이름'), ...heads.map((h) => head(h))]];
+      ordered.forEach((st) => {
+        data.push([{ value: numOf(st, S.indexOf(st)), align: 'center' }, { value: st.name, align: 'center' },
+          ...heads.map((_, i) => { const t = ts[i]; const v = t ? text(t.id, st.id) : ''; return v === '' ? null : { value: v, align: 'center' }; })]);
+      });
+      return { data, sheet: sj.slice(0, 28), columns: [{ width: 8 }, { width: 14 }, ...heads.map(() => ({ width: 11 }))] };
+    });
+    await writeXlsxFile(sheets).toFile('우리반_성적양식.xlsx');
   };
   const csv = () => {
     const rows = [['번호', '이름', ...tests.map((t) => `${t.name} ${t.date ?? ''}`)],
@@ -679,23 +703,43 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
         {MONTHS.map((n) => <button key={n} className={`${n === mo ? 'on' : ''} ${hasTests(n) ? 'has' : ''}`} onClick={() => setMo(n)}>{n}</button>)}
       </div>
       <div className="numtabs sheets">
-        {subjects.map((n) => <button key={n} className={n === cur ? 'on' : ''} onClick={() => setSub(n)}>{n}</button>)}
-        {subjects.length === 0 && <span style={{ padding: '6px 4px', color: 'var(--mute)' }}>아래에서 과목과 평가를 추가하세요</span>}
+        {subjects.map((n) => (n === cur && editSub
+          ? <input key={n} autoFocus className="subedit" defaultValue={n} onFocus={(e) => e.target.select()}
+              onBlur={(e) => (e.target.dataset.skip ? setEditSub(false) : renameSubject(e.target.value))}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.target.dataset.skip = '1'; renameSubject(e.target.value); } if (e.key === 'Escape') { e.target.dataset.skip = '1'; setEditSub(false); } }} />
+          : <button key={n} className={n === cur ? 'on' : ''} title={n === cur ? '한 번 더 누르면 과목 이름을 고칠 수 있습니다' : ''} onClick={() => (n === cur ? setEditSub(true) : setSub(n))}>{n}{n === cur && <Pencil size={11} style={{ marginLeft: 6, opacity: 0.75 }} />}</button>))}
+        <button type="button" className="subjbtn" onClick={addSubject}>과목 추가</button>
+        {subjects.length === 0 && <span style={{ padding: '6px 4px', color: 'var(--mute)' }}>「+ 과목 추가」를 눌러 과목을 만드세요 (예: 받아쓰기, 수학)</span>}
       </div>
-      <form className="gradeform" onSubmit={(e) => { const d = fd(e); if (d.subject && d.name) { add('tests', { ...d, date: d.date || null }); setSub(d.subject); } e.target.reset(); }}>
+      <form className="gradeform" onSubmit={(e) => {
+        const d = fd(e);
+        const f = e.target;
+        if (!d.subject?.trim()) { alert('과목 이름을 입력하세요. (예: 받아쓰기)'); f.elements.subject.focus(); return; }
+        if (!d.name?.trim()) { alert('평가 이름을 입력하세요. (예: 1급, 단원평가1)'); f.elements.name.focus(); return; }
+        add('tests', { subject: d.subject.trim(), name: d.name.trim(), date: d.date || null });
+        setSub(d.subject.trim());
+        if (d.date) setMo(+d.date.slice(5, 7)); // 다른 달 날짜로 추가해도 그 달 탭으로 이동해서 바로 보이게
+        f.elements.name.value = '';
+      }}>
+        <div className="gfields">
         <input name="subject" list="gsubs" placeholder="과목 (예: 받아쓰기)" defaultValue={cur} key={cur} size="12" />
         <datalist id="gsubs">{subjects.map((n) => <option key={n} value={n} />)}</datalist>
         <input name="name" placeholder="평가명 (예: 1급)" size="12" />
         <input type="date" name="date" key={newDate} defaultValue={newDate} />
-        <button>평가(열) 추가</button>
+        </div>
+        <div className="gbtns">
+        <button className="evalbtn">평가(열) 추가</button>
+        </div>
       </form>
       <div className="toolbar">
         <label className="btn primary"><Upload size={16} /> 성적 파일 올리기<input type="file" accept=".xlsx,.csv" onChange={(e) => { importScores(e.target.files[0]); e.target.value = ''; }} /></label>
-        <a className="btn" href="/samples/sample-grades.xlsx" download="샘플_성적.xlsx"><Download size={16} /> 샘플 파일 받기</a>
+        <button type="button" className="btn" onClick={downloadTemplate}><Download size={16} /> 성적 양식 받기 (우리 반 학생 포함)</button>
         <button type="button" className="btn" onClick={csv}><Download size={16} /> 이 과목 내보내기(CSV)</button>
-        <span className="hint">첫 줄: 번호 · 이름 · 평가이름(1급, 3급 …) / 점수는 숫자, 결석은 글자로 / 올릴 때 평가 날짜를 입력합니다</span>
+        <span className="hint">양식에 점수를 채워 다시 올리거나, 아래 표에서 바로 입력하세요. 점수는 숫자, 결석은 글자로 / 올릴 때 평가 날짜를 입력합니다</span>
       </div>
-      {S.length === 0 ? <p>먼저 학급명렬에서 학생을 추가하세요.</p> : tests.length === 0 ? <p style={{ color: 'var(--mute)' }}>{mo}월에는 {cur ? '「' + cur + '」 ' : ''}평가가 없습니다. 위에서 평가를 추가하거나 다른 달을 눌러 보세요.</p> : (
+      {S.length === 0 ? <p>먼저 학급명렬에서 학생을 추가하세요.</p> : (
+        <>
+        {!db.tests.some((t) => t.subject === cur) ? <p style={{ color: 'var(--mute)' }}>「{cur}」 과목을 만들었습니다. 위쪽에서 <b>평가 이름</b>을 쓰고 <b>평가(열) 추가</b>를 누르면 이 표에 열이 생깁니다.</p> : tests.length === 0 ? <p style={{ color: 'var(--mute)' }}>{mo}월에는 「{cur}」 평가가 없습니다. 위쪽에서 <b>평가(열) 추가</b>로 열을 만들거나 다른 달을 눌러 보세요.</p> : null}
         <div className="gradewrap">
           <table className="grades"><tbody>
             <tr><th style={{ width: 54 }}>번호</th><th style={{ width: 90 }}>이름</th>
@@ -707,13 +751,14 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
               <Fragment key={s.id}>
                 {i === cut && i > 0 && <tr className="gaprow"><td colSpan={2 + tests.length} /></tr>}
                 <tr><td className="c">{numOf(s, S.indexOf(s))}</td><td className="c">{s.name}</td>
-                  {tests.map((t) => <td key={t.id} className="c"><input className={cls(t.id, s.id)} key={String(text(t.id, s.id))} defaultValue={text(t.id, s.id)} onBlur={(e) => save(t.id, s.id, e.target.value)} /></td>)}
+                  {tests.map((t) => <td key={t.id} className="c"><input className={cls(t.id, s.id)} key={String(text(t.id, s.id))} defaultValue={text(t.id, s.id)} onBlur={(e) => { if (!save(t.id, s.id, e.target.value)) e.target.value = String(text(t.id, s.id)); }} /></td>)}
                 </tr>
               </Fragment>
             ))}
             <tr className="avgrow"><td className="c" colSpan="2">전체평균</td>{tests.map((t) => <td key={t.id} className="c">{avg(t.id)}</td>)}</tr>
           </tbody></table>
         </div>
+        </>
       )}
     </>
   );

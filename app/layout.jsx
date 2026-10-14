@@ -1,6 +1,6 @@
 import './globals.css';
 
-export const metadata = { title: '교사 플래너' };
+export const metadata = { title: '학급일지' };
 
 export default function RootLayout({ children }) {
   return (

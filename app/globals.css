@@ -285,9 +285,6 @@ table.grades tr.avgrow td{background:#f4f4f7;font-weight:700;color:#2f6a8a}
 /* 성적: 샘플 기록부처럼 하나의 표, 번호 묶음 사이는 빈 줄 */
 table.grades tr.gaprow td{height:16px;background:#fafafd;padding:0}
 
-.sampleBar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px;padding:10px 12px;border:1px dashed var(--line);border-radius:10px;background:#fafafd}
-.sampleBar button{margin:0}
-.sampleBar span{color:var(--mute);font-size:13px}
 
 .upl{font-size:13px;color:var(--ac2);margin-left:6px}
 .upl input{font-size:12px;max-width:190px}
@@ -352,3 +349,44 @@ table.stattable td.rank small{font-weight:400;color:var(--mute);font-size:11px}
 .seg button{padding:3px 12px;font-size:12px;margin:0 2px 0 0}
 .seg button.on{background:var(--ac);border-color:var(--ac);color:#fff}
 @media(max-width:800px){.statcards{grid-template-columns:repeat(2,1fr)}}
+
+/* 과목 탭 줄의 과목 추가·이름 바꾸기 */
+
+
+/* 과목 탭: 눌러서 이름 고치기 */
+input.subedit{flex:none;height:34px;width:130px;margin:0 2px;padding:0 12px;border:2px solid var(--ac);border-radius:8px;font-weight:700;color:var(--ac2);background:#fff}
+
+/* 평가(열) 추가와 같은 모양의 버튼 */
+button.pbtn{background:var(--ac);border:1px solid var(--ac);color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer}
+button.pbtn:hover{background:var(--ac2);border-color:var(--ac2)}
+
+/* 탭 줄 안에서도 탭처럼 보이지 않는 보라 버튼 */
+.numtabs button.pbtn{flex:none;align-self:center;margin:0 0 0 12px;padding:6px 16px;border-radius:6px;font-size:14px;background:var(--ac);border:1px solid var(--ac);color:#fff}
+.numtabs button.pbtn:hover{background:var(--ac2);border-color:var(--ac2)}
+
+/* 평가(열) 추가 = 청록, 과목 추가 = 주황 (선택된 보라 탭과 구별) */
+form.gradeform button.evalbtn{background:#2f9a8c;border-color:#2f9a8c;color:#fff}
+form.gradeform button.evalbtn:hover{background:#24796e;border-color:#24796e}
+.numtabs button.pbtn{background:#e8854f;border-color:#e8854f}
+.numtabs button.pbtn:hover{background:#c96d3a;border-color:#c96d3a}
+
+/* 입력 줄: 왼쪽 입력칸 / 오른쪽 버튼 두 개를 세로로(과목 추가가 평가(열) 추가 바로 위) */
+form.gradeform{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+form.gradeform .gfields{display:flex;align-items:center;flex-wrap:wrap;gap:2px}
+form.gradeform .gbtns{display:flex;flex-direction:column;gap:6px;min-width:130px}
+form.gradeform .gbtns button{width:100%;margin:0;height:36px;padding:0 14px;border-radius:6px;color:#fff;cursor:pointer}
+form.gradeform button.subjbtn{background:#e8854f;border:1px solid #e8854f}
+form.gradeform button.subjbtn:hover{background:#c96d3a;border-color:#c96d3a}
+form.gradeform button.evalbtn{background:#2f9a8c;border:1px solid #2f9a8c}
+form.gradeform button.evalbtn:hover{background:#24796e;border-color:#24796e}
+
+/* 과목 추가: 과목 탭 줄의 오른쪽 끝, 탭이 아니라 둥근 버튼 */
+.numtabs.sheets{align-items:center}
+.numtabs.sheets button.subjbtn{flex:none;margin:0 0 0 auto;height:36px;padding:0 16px;border-radius:6px;font-size:14px;font-weight:600;color:#fff;background:#e8854f;border:1px solid #e8854f}
+.numtabs.sheets button.subjbtn:hover{background:#c96d3a;border-color:#c96d3a}
+form.gradeform .gbtns{min-width:130px}
+
+/* 평가(열) 추가: 입력 줄 오른쪽 끝 (위의 과목 추가와 오른쪽 끝을 맞춤) */
+form.gradeform{align-items:center}
+form.gradeform .gbtns{margin-left:auto;min-width:0}
+form.gradeform .gbtns button.evalbtn{width:auto;height:36px;padding:0 16px;font-size:14px;font-weight:600}
