@@ -13,7 +13,7 @@ function Login() {
   const [msg, setMsg] = useState('');
   const run = async (signup) => {
     const { error } = await (signup ? sb.auth.signUp(f) : sb.auth.signInWithPassword(f));
-    setMsg(error ? error.message : signup ? '가입 완료. 메일 인증이 켜져 있으면 메일을 확인하세요.' : '');
+    setMsg(error ? error.message : '');
   };
   return (
     <div className="stage">
