@@ -398,3 +398,9 @@ form.gradeform .gbtns button.evalbtn{width:auto;height:36px;padding:0 16px;font-
 .photobox img{display:block;width:100%;height:150px;object-fit:cover}
 .photobox input{display:none}
 button.photodel{display:block;width:100%;margin:0;padding:4px;font-size:12px;border-top:1px solid var(--line);border-radius:0}
+
+/* 체크리스트 학생 버튼: 번호 + 이름 */
+.ckpanel .nums{grid-template-columns:repeat(5,1fr);gap:8px}
+.ckpanel .chk{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;height:auto;min-height:50px;padding:6px 4px;line-height:1.25}
+.ckpanel .chk b{font-size:15px;font-weight:700}
+.ckpanel .chk span{font-size:12px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}

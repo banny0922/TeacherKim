@@ -447,7 +447,7 @@ export function Checklists({ db, S, del, upd, write, load, focus }) {
                 <div className="nums">
                   {S.map((s, i) => {
                     const on = db.checks.some((k) => k.checklist_id === cur.id && k.student_id === s.id);
-                    return <button key={s.id} type="button" className={`chk ${on ? 'on' : ''}`} title={s.name} onClick={() => toggle(cur.id, s.id, on)}>{numOf(s, i)}</button>;
+                    return <button key={s.id} type="button" className={`chk ${on ? 'on' : ''}`} title={`${numOf(s, i)}번 ${s.name}`} onClick={() => toggle(cur.id, s.id, on)}><b>{numOf(s, i)}</b><span>{s.name}</span></button>;
                   })}
                 </div>
               </td></tr>
