@@ -3,7 +3,7 @@
 -- drop table if exists checks, checklists, scores, tests, notes, events, students, timetable, progress, meetings, memos, day_memos, period_notes cascade;
 
 create table students   (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
-  num int, name text not null default '', phone text, parent_phone text);
+  num int, name text not null default '', phone text, parent_phone text, photo text);
 create table events     (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
   date date not null, title text not null);
 create table tests      (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),

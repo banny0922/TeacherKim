@@ -1,15 +1,30 @@
 'use client';
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { sb, today, saved } from './sb';
 import { holidayName } from './holidays';
 import { readSheets, readTable } from './readTable';
-import { CalendarDays, PenLine, ListChecks, StickyNote, BookOpen, Users, MessageCircle, Upload, Download, Trash2, Plus, Pencil } from 'lucide-react';
+import { CalendarDays, PenLine, ListChecks, StickyNote, BookOpen, Users, MessageCircle, Upload, Download, Trash2, Plus, Pencil, Camera } from 'lucide-react';
 
 const fd = (e) => { e.preventDefault(); return Object.fromEntries(new FormData(e.target)); };
 const Del = ({ onClick }) => <button className="x" onClick={onClick}>삭제</button>;
 const dateDesc = (a, b) => b.date.localeCompare(a.date);
 const numOf = (s, i) => s.num ?? i + 1;
 const NLX = String.fromCharCode(10);
+
+// 사진을 긴 쪽 320px로 줄여서 JPEG data URL로 만든다 (DB에 작게 저장하기 위해)
+async function resizePhoto(file, max = 320) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('사진을 읽을 수 없습니다.')); i.src = url; });
+    const k = Math.min(1, max / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    let q = 0.85, out = c.toDataURL('image/jpeg', q);
+    while (out.length > 90000 && q > 0.4) { q -= 0.1; out = c.toDataURL('image/jpeg', q); }
+    return out;
+  } finally { URL.revokeObjectURL(url); }
+}
 export const ckDate = (c) => c.date ?? c.created_at?.slice(0, 10) ?? '';
 const memoDate = (m) => m.date ?? m.created_at?.slice(0, 10) ?? '';
 
@@ -458,6 +473,33 @@ export function Counsel({ db, S, add, del, upd, focus }) {
   const [text, setText] = useState('');
   const [editId, setEditId] = useState(null);
   const stu = S.find((s) => s.id === sid) ?? S[0];
+  // 사진은 목록 불러오기에 넣지 않고(용량), 학생을 고를 때 그 학생 것만 가져온다
+  const [photo, setPhoto] = useState(null);
+  useEffect(() => {
+    let off = false;
+    setPhoto(stu?.photo ?? null);
+    if (stu && stu.photo === undefined) {
+      sb.from('students').select('photo').eq('id', stu.id).maybeSingle().then(({ data }) => { if (!off) setPhoto(data?.photo ?? null); });
+    }
+    return () => { off = true; };
+  }, [stu?.id]);
+  const photoError = (m) => alert(/photo/.test(m) ? '사진을 저장할 칸이 아직 없습니다. Supabase SQL Editor에서 migrate.sql을 한 번 실행해 주세요.' : m);
+  const pickPhoto = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return alert('사진(이미지) 파일을 선택하세요.');
+    try {
+      const url = await resizePhoto(file);
+      const { error } = await sb.from('students').update({ photo: url }).eq('id', stu.id);
+      if (error) return photoError(error.message);
+      setPhoto(url); saved();
+    } catch (e) { alert(e.message); }
+  };
+  const removePhoto = async () => {
+    if (!confirm(`${stu.name} 학생의 사진을 삭제할까요?`)) return;
+    const { error } = await sb.from('students').update({ photo: null }).eq('id', stu.id);
+    if (error) return photoError(error.message);
+    setPhoto(null); saved();
+  };
   const mine = db.notes.filter((n) => n.student_id === stu?.id).sort(dateDesc);
   const pick = (opts, val, set) => opts.map((o) => <td key={o} className={`pick ${val === o ? 'on' : ''}`} onClick={() => set(o)}>{o}</td>);
   if (!S.length) return <p>먼저 학급명렬에서 학생을 추가하세요.</p>;
@@ -471,7 +513,13 @@ export function Counsel({ db, S, add, del, upd, focus }) {
       <div className="two counsel">
         <div>
           <table><tbody>
-            <tr><td rowSpan="2" className="photo">사진</td><th>이름</th><td>{stu.name}</td></tr>
+            <tr><td rowSpan="2" className="photo">
+              <label className="photobox" title={photo ? '눌러서 사진 바꾸기' : '눌러서 사진 등록'}>
+                {photo ? <img src={photo} alt={stu.name} /> : <span><Camera size={22} /><br />사진 등록</span>}
+                <input type="file" accept="image/*" onChange={(e) => { pickPhoto(e.target.files[0]); e.target.value = ''; }} />
+              </label>
+              {photo && <button type="button" className="x photodel" onClick={removePhoto}>사진 삭제</button>}
+            </td><th>이름</th><td>{stu.name}</td></tr>
             <tr><th>기록</th><td>{mine.length ? `${mine.length}회 · 최근 ${mine[0].date.slice(5).replace('-', '/')}` : '기록 없음'}</td></tr>
           </tbody></table>
           <div className="history">

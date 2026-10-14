@@ -55,7 +55,7 @@ function Planner({ uid }) {
   const [err, setErr] = useState('');
   const load = async () => {
     const keys = Object.keys(EMPTY);
-    const r = await Promise.all(keys.map((t) => sb.from(t).select('*').order('created_at')));
+    const r = await Promise.all(keys.map((t) => sb.from(t).select(t === 'students' ? 'id,user_id,created_at,num,name,phone,parent_phone' : '*').order('created_at')));
     const bad = r.find((x) => x.error);
     if (bad) return setErr(bad.error.message);
     setDb(Object.fromEntries(keys.map((t, i) => [t, r[i].data])));

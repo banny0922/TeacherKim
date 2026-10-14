@@ -19,6 +19,7 @@ alter table checklists add column if not exists date date;
 alter table memos      add column if not exists date date;
 alter table meetings   add column if not exists title text;
 alter table scores     add column if not exists mark text;
+alter table students   add column if not exists photo text;
 
 -- 3) 보안(RLS): 본인 데이터만 접근
 do $$ declare t text; begin
