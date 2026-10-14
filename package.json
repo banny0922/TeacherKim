@@ -1,1 +1,1 @@
-{"name":"class-manager","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start"},"dependencies":{"@supabase/supabase-js":"^2.117.3","next":"^16.4.0","react":"^19.3.0","react-dom":"^19.3.0","read-excel-file":"^9.3.12"}}
+{"name":"class-manager","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start"},"dependencies":{"@supabase/supabase-js":"^2.117.3","korean-lunar-calendar":"^0.4.0","lucide-react":"^1.56.0","next":"^16.4.0","react":"^19.3.0","react-dom":"^19.3.0","read-excel-file":"^9.3.12"}}

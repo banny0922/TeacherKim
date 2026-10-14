@@ -2,3 +2,7 @@ node_modules
 .next
 .env*
 !.env.example
+
+# 학생 개인정보가 든 샘플 명단은 GitHub에 올리지 않는다
+roster-sample/
+app/mockup/

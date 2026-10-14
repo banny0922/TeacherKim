@@ -1,34 +1,354 @@
-:root{--ac:#5b5a8f;--bg:#f3f4f8;--line:#cfd2de}
-body{font:15px/1.5 "Malgun Gothic",sans-serif;max-width:1000px;margin:0 auto;padding:12px;color:#23263a;background:var(--bg)}
-h2{color:var(--ac);margin:4px 0}
-nav{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
-nav button{padding:6px 14px;border:0;border-radius:999px;background:#e4e4ef;cursor:pointer}
-nav button.on{background:var(--ac);color:#fff}
-input,select,textarea,button{font:inherit;padding:4px 6px;margin:2px}
-textarea{width:95%}
-table{border-collapse:collapse;width:100%;background:#fff}
-td,th{border:1px solid var(--line);padding:3px 6px;text-align:left}
-th{background:#eef0f7;font-weight:600}
-td input,td textarea{width:100%;box-sizing:border-box;border:0;background:transparent;margin:0}
-td input[type=number]{width:60px}
-.card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px;margin:8px 0}
-.x{color:#c00;cursor:pointer;border:0;background:none}
+:root{--ac:#6b6a9b;--ac2:#55547f;--soft:#e9e9f4;--bg:#f1f1f3;--line:#c9cad3;--ink:#3a3d4f;--mute:#7b7e90;--sun:#d4572a;--sat:#2b63d9;--pink:#f2c9cf}
+*{box-sizing:border-box}
+body{margin:0;padding:14px;font:15px/1.55 -apple-system,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;color:var(--ink);background:var(--bg)}
+.bar{max-width:1100px;margin:0 auto 6px;text-align:right}
+button.logout{padding:3px 12px;font-size:12px;color:var(--mute);border:1px solid var(--line);border-radius:999px;background:transparent;cursor:pointer;margin:0}
+button.logout:hover{background:#fff;color:var(--ink)}
+
+/* 종이 */
+.paper{max-width:1100px;margin:0 auto;background:#fff;border-radius:4px;box-shadow:0 2px 14px rgba(40,40,70,.12);padding:26px 36px 40px;min-height:80vh}
+.phead{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-bottom:22px}
+.ptitle{margin:0;font-size:22px;font-weight:500;color:#666;padding-top:14px}
+.ptitle span{display:inline-block;padding:0 34px 0 8px;background:linear-gradient(transparent 58%,#e6e9f0 58%)}
+.legend{display:grid;grid-template-columns:repeat(5,auto);gap:4px 22px;justify-items:start}
+.legend button{display:flex;align-items:center;gap:8px;padding:2px 0;border:0;background:none;font:inherit;font-size:14px;color:#444;cursor:pointer}
+.legend button:hover{color:var(--ac)}
+.legend button.on{color:var(--ac);font-weight:700}
+.legend i{width:11px;height:11px;border-radius:50%;display:inline-block}
+.legend i.pink{background:var(--pink)}.legend i.purple{background:var(--ac)}
+
+/* 입력/버튼 */
+h3{margin:18px 0 8px;font-size:16px;color:var(--ac2)}
+input,select,textarea,button{font:inherit;color:inherit}
+input,select,textarea{padding:6px 9px;border:1px solid var(--line);border-radius:6px;background:#fff;margin:2px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ac);box-shadow:0 0 0 3px rgba(107,106,155,.16)}
+textarea{width:100%;resize:vertical}
+button{padding:6px 14px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;margin:2px}
+button:hover{background:#f4f4f9}
+form{margin:8px 0 14px}
+form>button:not([type=button]),form button:last-child:not([type=button]){background:var(--ac);border-color:var(--ac);color:#fff}
+.x{border:0;background:none;color:#c0392b;padding:1px 6px;font-size:13px}
+.x:hover{background:#fdecea}
+
+/* 표: 얇은 선, 연회색 머리칸 */
+table{border-collapse:collapse;width:100%;background:#fff;margin-top:8px}
+td,th{border:1px solid var(--line);padding:4px 8px;text-align:left}
+th{background:#f4f4f7;font-weight:400;color:#666;text-align:center;font-size:14px}
+td input,td textarea{width:100%;border:0;background:transparent;margin:0;padding:6px 4px;border-radius:0;box-shadow:none}
+td input:focus,td textarea:focus{box-shadow:inset 0 0 0 2px var(--ac)}
+td input[type=number]{width:64px}
+.card{border:1px solid var(--line);padding:10px 14px;margin:10px 0;background:#fff}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+
+/* 달력 */
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
-.cal>div{background:#fff;min-height:84px;padding:2px 4px;cursor:pointer;font-size:13px}
-.cal>div.h{min-height:0;text-align:center;background:#eef0f7;cursor:default}
+.cal>div{background:#fff;min-height:96px;padding:4px 6px;cursor:pointer;font-size:13px}
+.cal>div:hover{background:#f8f8fc}
+.cal>div.h{min-height:0;text-align:center;background:#fff;cursor:default;font-size:14px;padding:8px}
 .cal>div.sel{outline:2px solid var(--ac);outline-offset:-2px}
-.cal>div.td{background:#fff6d6}
-.cal .sun{color:#d4572a}.cal .sat{color:#2b63d9}
-.ev{background:#e4e4ef;border-radius:4px;margin-top:2px;padding:0 4px}
-.nums{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-.chk{width:38px;height:34px;border:1px solid var(--line);background:#fff;border-radius:6px;cursor:pointer}
+.cal>div.td{background:#fff3bf}
+.sun{color:var(--sun)}.sat{color:var(--sat)}
+.ev{background:var(--soft);color:var(--ac2);border-radius:4px;margin-top:3px;padding:1px 6px;font-size:12px}
+
+/* 주간 표 */
+.weekwrap{overflow-x:auto}
+table.week{table-layout:fixed;min-width:760px}
+table.week th small{font-weight:400;color:var(--mute)}
+.week td{vertical-align:top;padding:0;min-width:100px}
+.week td textarea{border:0;background:transparent;margin:0;font-size:13px;line-height:1.45;padding:6px;height:100%;border-radius:0}
+.week tr.evrow td{background:#f6f4fc}
+.week tr.evrow th{background:#ebe8f7}
+.week td.tdc,.week th.tdh,.week tr.evrow td.tdc{background:#fff3bf}
+
+/* 체크리스트: 회색 둥근 제목칸 + 번호 5열 */
+.ckgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px 36px;margin-top:14px}
+.ck input.cktitle{width:100%;height:44px;border:0;border-radius:14px;background:#f1f3f6;text-align:center;margin:0 0 10px;box-shadow:none}
+.nums{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;justify-items:center}
+.chk{width:36px;height:36px;padding:0;border:0;border-radius:50%;background:none;color:#666;margin:0}
+.chk:hover{background:var(--soft)}
 .chk.on{background:var(--ac);color:#fff}
-.tabs{display:flex;flex-wrap:wrap;gap:2px;margin-bottom:8px}
-.tabs button{min-width:34px;border:1px solid var(--line);background:#fff;cursor:pointer}
-.tabs button.on{background:var(--ac);color:#fff}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(max-width:700px){.two{grid-template-columns:1fr}}
-@media print{nav,form,.x,button{display:none}}
-.week{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
-.week .card{margin:0}.week .card.sel{outline:2px solid var(--ac)}
-.week .sun{color:#d4572a}.week .sat{color:#2b63d9}
+
+/* 상담기록 */
+.numtabs{display:flex;border-bottom:1px solid var(--line);margin-bottom:16px;overflow-x:auto}
+.numtabs button{flex:1;min-width:30px;padding:6px 0;border:0;border-radius:0;background:none;color:#666;font-size:14px;margin:0}
+.numtabs button.on{background:var(--ac);color:#fff}
+.counsel table{margin-top:0}
+.counsel td.photo{width:150px;height:150px;text-align:center;color:#777;background:#fff}
+.counsel th{width:70px}
+.history{border:1px solid var(--line);border-top:0;min-height:420px;padding:10px 12px}
+.history>div{padding:8px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.counseltable td.pick{text-align:center;cursor:pointer;color:#666}
+.counseltable td.pick:hover{background:#f4f4f9}
+.counseltable td.pick.on{background:var(--soft);color:var(--ac2);font-weight:700}
+.counseltable th.tall{height:420px}
+.counseltable td.body{padding:0;vertical-align:top}
+.counseltable td.body textarea{height:100%;min-height:420px;border:0;border-radius:0;margin:0;padding:12px}
+
+/* 오늘 표시 */
+.tdr,.tdr td{background:#fff3bf}
+
+/* 로그인: 화면 한가운데 */
+.stage{min-height:calc(100vh - 28px);display:grid;place-items:center;background:radial-gradient(circle at 20% 15%,#e6e4f5 0,transparent 45%),radial-gradient(circle at 85% 85%,#f6dfe3 0,transparent 40%)}
+.cover{display:flex;width:min(420px,92vw);border-radius:6px 18px 18px 6px;overflow:hidden;background:#fff;box-shadow:0 18px 50px rgba(50,48,90,.22)}
+.cover .spine{width:30px;flex:none;background:linear-gradient(90deg,var(--ac2),var(--ac));position:relative}
+.cover .spine::after{content:"";position:absolute;right:6px;top:0;bottom:0;border-right:2px dotted rgba(255,255,255,.35)}
+.login{flex:1;margin:0;padding:38px 32px 30px;text-align:center}
+.login .logo{margin:0 auto 10px}
+.login small{display:block;color:var(--mute);letter-spacing:.35em;font-size:12px}
+.login h1.ptitle{display:block;padding:0;margin:14px 0 4px;text-align:center}
+.login h1.ptitle span{padding:0 28px}
+.login .sub{margin:6px 0 22px;color:var(--mute);font-size:13px}
+.login .dots{display:flex;justify-content:center;gap:6px;margin-bottom:6px}
+.login .dots i{width:9px;height:9px;border-radius:50%;background:var(--pink)}
+.login .dots i:nth-child(even){background:var(--ac)}
+.login label{display:block;text-align:left;font-size:13px;color:var(--mute);margin-top:14px}
+.login input{width:100%;height:44px;margin:5px 0 0;padding:0 14px;border:0;border-radius:14px;background:#f1f3f6}
+.login input:focus{background:#fff;box-shadow:0 0 0 2px var(--ac)}
+.login button{width:100%;height:46px;margin:16px 0 0;border:0;border-radius:14px;background:var(--ac);color:#fff;font-size:15px}
+.login button:hover{background:var(--ac2)}
+.login button[type=button]{height:40px;margin-top:8px;background:transparent;color:var(--ac);font-size:14px}
+.login button[type=button]:hover{background:var(--soft)}
+.login .msg{color:#c0392b;font-size:13px;min-height:1.2em;margin:10px 0 0}
+.logo{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#7776b3,var(--ac2));box-shadow:0 4px 12px rgba(91,90,143,.35)}
+
+@media(max-width:800px){
+  body{padding:6px}.paper{padding:16px 14px}
+  .two,.ckgrid{grid-template-columns:1fr}
+  .legend{grid-template-columns:repeat(3,auto)}
+  .cal>div{min-height:64px}
+}
+@media print{.bar,.legend,form button,.x{display:none}body{background:#fff}.paper{box-shadow:none}}
+
+/* 시간표: 칸 가운데 정렬, 원본처럼 높게 */
+h3.pill{display:table;margin:14px auto 10px;padding:6px 26px;border-radius:999px;background:#eef0f7;color:#555;font-size:14px;font-weight:600}
+td.tt{padding:0;height:84px;vertical-align:middle}
+td.tt textarea{height:100%;min-height:84px;text-align:center;padding:26px 4px 0;resize:none;line-height:1.35}
+.two table th:first-child{width:56px}
+/* 표 안의 번호·이름·연락처·점수는 가운데 정렬 */
+td.c input,td.c textarea{text-align:center}
+td input[type=number]{text-align:center}
+
+/* 달력: 오른쪽 월 탭 + 영어 월 이름 */
+.withtabs{display:flex;gap:14px;align-items:flex-start}
+.withtabs .main{flex:1;min-width:0}
+.monthname{margin:0 0 12px;font-size:20px;font-weight:500;color:#666}
+.monthname span{display:inline-block;padding:0 34px 0 8px;background:linear-gradient(transparent 58%,#e6e9f0 58%)}
+.monthname small{color:var(--mute);font-weight:400;margin-left:8px}
+.mtabs{display:flex;flex-direction:column;width:34px;flex:none;margin-right:-36px;background:#ececf0;border-radius:0 4px 4px 0}
+.mtabs b{writing-mode:vertical-rl;padding:12px 0;font-weight:500;color:#666;text-align:center;margin:0 auto}
+.mtabs button{writing-mode:vertical-rl;padding:10px 0;margin:0;border:0;border-radius:0;background:none;color:#666;font-size:13px;height:62px}
+.mtabs button:hover{background:#e0e0ea}
+.mtabs button.on{background:var(--ac);color:#fff}
+.meetform td.body textarea{border:0;margin:0;padding:12px;min-height:160px}
+@media(max-width:800px){.mtabs{margin-right:0}.withtabs{flex-direction:column}.mtabs{flex-direction:row;width:100%;overflow-x:auto}.mtabs button,.mtabs b{writing-mode:horizontal-tb;height:auto;padding:8px 10px}}
+
+/* 공휴일 */
+.hol{display:block;color:var(--sun);font-size:11px;line-height:1.2;margin-left:0}
+.cal .hol{display:inline;margin-left:5px}
+table.week th small.hol{display:block;color:var(--sun)}
+
+.monthname button{padding:2px 10px;margin:0 4px;font-size:14px;vertical-align:middle}
+
+/* 저장 버튼: 글을 쓰는 양식은 오른쪽 아래로 */
+form:has(textarea)>button:last-child{display:block;margin:10px 0 0 auto;padding:8px 28px}
+form:has(textarea)>br{display:none}
+
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--ac2);color:#fff;padding:10px 22px;border-radius:999px;font-size:14px;box-shadow:0 6px 20px rgba(40,40,70,.3);z-index:20;animation:pop .18s ease-out}
+@keyframes pop{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+
+/* 왼쪽 목록 / 오른쪽 입력 */
+.split{align-items:start}
+.split .counseltable{margin-top:0}
+.split .counseltable th.tall{height:360px}
+.split .counseltable td.body textarea{min-height:360px}
+.split .counseltable td input:not([type=date]){width:100%}
+
+/* 왼쪽 목록 3 : 오른쪽 입력 7 */
+.two.split,.two.counsel{grid-template-columns:3fr 7fr}
+@media(max-width:800px){.two.split,.two.counsel{grid-template-columns:1fr}}
+.counsel td.photo{width:110px;height:110px}
+.split .counseltable th.tall,.counsel .counseltable th.tall{height:480px}
+.split .counseltable td.body textarea,.counsel .counseltable td.body textarea{min-height:480px}
+
+tr.pickrow{cursor:pointer}
+tr.pickrow:hover td{background:#f4f4f9}
+tr.pickrow.on td{background:var(--soft);font-weight:700;color:var(--ac2)}
+
+/* 왼쪽 목록과 오른쪽 입력의 윗선 맞춤 + 목록은 한 줄씩 한 박스 */
+.split table,.counsel table{margin-top:0}
+.split>div>table+table{margin-top:10px}
+.split table:has(tr.pickrow){table-layout:fixed}
+.split tr.pickrow td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.split tr.pickrow td.c{width:70px;text-align:center}
+.split tr.pickrow{height:42px}
+
+/* 윗선·줄 높이 일치: 왼쪽 머리줄=오른쪽 날짜줄, 왼쪽 첫 행=오른쪽 제목줄 */
+.split>form,.counsel>form{margin-top:0}
+.split>div>table:first-child tr,.split .counseltable tr:not(:has(td.body)){height:46px}
+.split tr.pickrow{height:46px}
+.split .counseltable th,.split .counseltable td{box-sizing:border-box}
+
+/* 버튼 줄: 왼쪽 삭제 / 오른쪽 저장 */
+.actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.actions button{margin:0;padding:8px 28px}
+.actions button:not(.danger){background:var(--ac);border-color:var(--ac);color:#fff}
+button.danger{background:#fff;color:#c0392b;border-color:#e6b8b2;padding:8px 22px}
+button.danger:hover{background:#fdecea}
+
+/* 상담기록 학생 검색 */
+.searchbar{position:relative;display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.searchbar input{width:260px;height:40px;margin:0;border-radius:999px;padding:0 18px;background:#f1f3f6;border-color:transparent}
+.searchbar input:focus{background:#fff}
+.searchbar .picked{color:var(--ac2);font-size:16px}
+.results{position:absolute;top:44px;left:0;width:260px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px rgba(40,40,70,.16);padding:6px;z-index:5}
+.results button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 12px;margin:0;border-radius:8px}
+.results button:hover{background:var(--soft)}
+.results .none{padding:10px 12px;color:var(--mute);font-size:14px}
+
+/* 상담기록: 왼쪽 상자 아래선을 오른쪽 입력 표 아래선에 맞춤 */
+.counsel td.photo{width:84px;height:84px}
+.counsel td{white-space:nowrap}
+.counsel>div:first-child{display:flex;flex-direction:column;align-self:stretch;padding-bottom:65px}
+.counsel .history{flex:1;min-height:0}
+.counsel>form{align-self:stretch}
+
+.searchbar select{height:42px;min-width:240px;margin:0;padding:0 40px 0 18px;border-radius:999px;background-color:#f1f3f6;border-color:transparent;font-size:15px;cursor:pointer}
+.searchbar select:focus{background-color:#fff}
+
+/* 셀렉트 박스: 기본 화살표 대신 직접 그린 화살표 */
+select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236b6a9b' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 16px center;background-size:14px;padding-right:42px}
+.searchbar select{border:0;box-shadow:none}
+.searchbar select:focus{box-shadow:0 0 0 2px var(--ac)}
+
+/* 체크리스트 삭제 ×, 시간표 글자 세로 가운데 */
+.ck{position:relative}
+.ck .ckdel{position:absolute;right:10px;top:9px;width:26px;height:26px;padding:0;margin:0;border:0;border-radius:50%;background:transparent;color:#999;font-size:18px;line-height:1}
+.ck .ckdel:hover{background:#fdecea;color:#c0392b}
+td.tt textarea{padding-top:31px}
+
+/* 학급명렬 윗부분: 가볍게 */
+details.bulk{margin:0 0 8px}
+details.bulk summary{cursor:pointer;color:var(--ac2);font-size:14px}
+details.bulk form{margin:8px 0 0}
+
+/* 성적: 점수·번호·이름·평균 가운데 */
+td:has(input[type=number]){text-align:center}
+td:has(input[type=number]) input[type=number]{width:100%;text-align:center}
+td.c{text-align:center}
+
+/* 메뉴 점: 메뉴마다 다른 색, 지금 보는 메뉴는 링으로 강조 */
+.legend i{width:12px;height:12px;transition:transform .15s,box-shadow .15s}
+.legend button:hover i{transform:scale(1.25)}
+.legend button.on i{box-shadow:0 0 0 3px #fff,0 0 0 5px var(--dot);transform:scale(1.05)}
+
+/* 월간 달력에 보이는 교시 메모: 한 줄로 줄여서 */
+.cal .ev.pn{background:#f6f4fc;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal>div{min-height:104px}
+
+/* 체크리스트 상세 패널 */
+.ckpanel th.tall{height:auto}
+.ckpanel td.body{padding:10px;vertical-align:top}
+.ckpanel .nums{grid-template-columns:repeat(7,1fr);gap:6px}
+.ckpanel .chk{border:1px solid var(--line);border-radius:10px;width:100%;height:40px;background:#fff}
+.ckpanel .chk.on{background:var(--ac);border-color:var(--ac)}
+.cal .ev.ckev,.week .ev.ckev{background:#e3f1e6;color:#2f6b3e}
+
+/* 달력 칸의 기록: 아이콘 + 한 줄 */
+.ev.it{display:flex;align-items:center;gap:5px;background:transparent;padding:1px 2px;margin-top:2px;font-size:12px;color:var(--ink);white-space:nowrap}
+.ev.it span{overflow:hidden;text-overflow:ellipsis}
+.ev.it svg{flex:none}
+.more{font-size:11px;color:var(--mute);padding-left:2px}
+.cal>div{min-height:118px}
+
+.ev.it.go{cursor:pointer;border-radius:4px}
+.ev.it.go:hover{background:#eeeaf8}
+
+/* 성적 표 */
+.sheets{margin-bottom:10px}
+.gradeform{margin:6px 0 12px}
+.gradewrap{overflow-x:auto}
+table.grades{min-width:520px}
+table.grades td input{text-align:center;font-weight:600;color:#222}
+table.grades td input.hi{color:#d4301f}
+table.grades td input.lo{color:#2f6fd6}
+table.grades td input.mk{color:#2f6fd6;font-weight:700}
+table.grades th small{font-weight:400;color:var(--mute)}
+table.grades tr.avgrow td{background:#f4f4f7;font-weight:700;color:#2f6a8a}
+
+.sheets button{flex:none;padding:6px 22px}
+
+/* 성적: 학급명렬처럼 왼쪽·오른쪽 두 칸(학생을 반씩) */
+.grade2{overflow-x:auto;align-items:start}
+.grade2 table.grades{min-width:0}
+.grade2 table.grades td input{font-size:14px}
+
+/* 성적: 샘플 기록부처럼 하나의 표, 번호 묶음 사이는 빈 줄 */
+table.grades tr.gaprow td{height:16px;background:#fafafd;padding:0}
+
+.sampleBar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px;padding:10px 12px;border:1px dashed var(--line);border-radius:10px;background:#fafafd}
+.sampleBar button{margin:0}
+.sampleBar span{color:var(--mute);font-size:13px}
+
+.upl{font-size:13px;color:var(--ac2);margin-left:6px}
+.upl input{font-size:12px;max-width:190px}
+
+/* 올리기·받기 버튼 */
+.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 12px}
+.btn{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 16px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-size:14px;cursor:pointer;text-decoration:none;margin:0;transition:background .12s,box-shadow .12s}
+.btn:hover{background:var(--soft)}
+.btn.primary{background:var(--ac);border-color:var(--ac);color:#fff}
+.btn.primary:hover{background:var(--ac2);box-shadow:0 3px 10px rgba(91,90,143,.3)}
+.btn input[type=file]{display:none}
+.hint{color:var(--mute);font-size:13px}
+
+/* 평가(열) 삭제: 평소에는 흐리게, 마우스를 올리면 빨갛게 */
+button.tdel{display:inline-grid;place-items:center;width:22px;height:22px;padding:0;margin:0 0 0 4px;border:0;border-radius:6px;background:transparent;color:#b5b8c6;vertical-align:middle}
+button.tdel:hover{background:#fdecea;color:#c0392b}
+
+/* 상담 기록 목록: 눌러서 수정 */
+.history>div.note{cursor:pointer;border-radius:6px;padding:8px}
+.history>div.note:hover{background:#f4f4f9}
+.history>div.note.on{background:var(--soft)}
+/* 성적 머리글: 평가 이름·날짜를 직접 수정 */
+input.hname{width:100%;max-width:110px;text-align:center;border:1px solid transparent;background:transparent;font-weight:600;font-size:14px;padding:2px 4px;margin:0}
+input.hdate{width:112px;font-size:12px;color:var(--mute);border:1px solid transparent;background:transparent;padding:1px 2px;margin:0}
+input.hname:hover,input.hdate:hover{border-color:var(--line);background:#fff}
+
+/* 성적 월 탭: 그 달에 평가가 있으면 점 표시 */
+.numtabs.months{margin-bottom:6px}
+.numtabs.months button.has:not(.on){color:var(--ac2);font-weight:700;box-shadow:inset 0 -3px 0 #c9c8e6}
+
+/* 메뉴 점: 6열(성적통계가 성적 옆) */
+.legend{grid-template-columns:repeat(6,auto)}
+@media(max-width:800px){.legend{grid-template-columns:repeat(3,auto)}}
+
+/* 성적 통계 */
+.statcards{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin:6px 0 4px}
+.statcards>div{background:#f6f5fb;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.statcards small{display:block;color:var(--mute);font-size:11px}
+.statcards b{font-size:18px;color:var(--ac2)}
+table.stattable th{font-size:13px}
+table.stattable td.hi{color:#d4301f}
+table.stattable td.lo{color:#2f6fd6}
+table.stattable sup{font-size:10px;color:var(--mute);margin-left:2px}
+table.stattable td.rank{font-weight:700;white-space:nowrap}
+table.stattable td.rank.top{color:#b8860b}
+table.stattable td.rank small{font-weight:400;color:var(--mute);font-size:11px}
+.dist{display:flex;height:22px;border-radius:6px;overflow:hidden;background:#eee}
+.dist i{display:grid;place-items:center;color:#fff;font-size:11px;font-style:normal;min-width:14px}
+.legendline{display:flex;gap:14px;flex-wrap:wrap;margin:6px 0 0;font-size:12px;color:var(--mute)}
+.legendline i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
+.trend{display:flex;align-items:flex-end;gap:14px;padding:10px 6px 0;min-height:170px;border-bottom:1px solid var(--line)}
+.trend>div{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;width:56px}
+.trend i{display:block;width:34px;background:linear-gradient(180deg,#8c8cd8,#6b6a9b);border-radius:6px 6px 0 0}
+.trend .val{font-size:12px;font-weight:700;color:var(--ac2)}
+.trend .lab{font-size:12px;color:#555;text-align:center}
+.trend .lab small{display:block;color:var(--mute);font-size:10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:5px 12px;border-radius:999px;font-size:13px}
+.chip.good{background:#e6f4ea;color:#2f6b3e}
+.chip.warn{background:#e8f0fc;color:#2f6fd6}
+.seg{margin-left:14px;font-weight:400}
+.seg button{padding:3px 12px;font-size:12px;margin:0 2px 0 0}
+.seg button.on{background:var(--ac);border-color:var(--ac);color:#fff}
+@media(max-width:800px){.statcards{grid-template-columns:repeat(2,1fr)}}
