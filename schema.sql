@@ -33,3 +33,7 @@ do $$ declare t text; begin
     execute format('create policy "own rows" on %I for all using (user_id = auth.uid()) with check (user_id = auth.uid())', t);
   end loop;
 end $$;
+
+-- 로그인한 사용자에게 테이블 권한 부여 (없으면 "permission denied for table" 발생)
+grant select, insert, update, delete on all tables in schema public to authenticated;
+alter default privileges in schema public grant select, insert, update, delete on tables to authenticated;
