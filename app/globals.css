@@ -404,3 +404,131 @@ button.photodel{display:block;width:100%;margin:0;padding:4px;font-size:12px;bor
 .ckpanel .chk{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;height:auto;min-height:50px;padding:6px 4px;line-height:1.25}
 .ckpanel .chk b{font-size:15px;font-weight:700}
 .ckpanel .chk span{font-size:12px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+
+/* 학사일정 메뉴 + 연간 캘린더 (숫자만) */
+.calmenu{display:flex;gap:8px;margin:0 0 14px}
+.calmenu button{padding:8px 20px;border:1px solid var(--line);border-radius:999px;background:#fff;color:#555;font-size:14px;cursor:pointer;margin:0}
+.calmenu button:hover{background:var(--soft)}
+.calmenu button.on{background:var(--ac);border-color:var(--ac);color:#fff;font-weight:700}
+.weekbar{margin:0 0 4px}
+.yeargrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.mini{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff}
+.mini h4{margin:0 0 6px;font-size:15px;color:var(--ac2);cursor:pointer}
+.mini h4:hover{text-decoration:underline}
+.mhead,.mweek{display:grid;grid-template-columns:repeat(7,1fr)}
+.mhead span{text-align:center;font-size:11px;color:var(--mute);padding-bottom:2px}
+.mweek{cursor:pointer;border-radius:6px}
+.mweek:hover{background:var(--soft)}
+.mweek.now{background:#fff3bf}
+.mweek span{position:relative;text-align:center;font-size:12px;line-height:22px;height:22px}
+
+
+@media(max-width:1000px){.yeargrid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:700px){.yeargrid{grid-template-columns:repeat(2,1fr)}}
+
+/* 주간 표: 시간표에서 가져온 교시 라벨 */
+.ttlabel{display:flex;flex-wrap:wrap;gap:4px;padding:5px 6px 0}
+.ttlabel b,b.ttkey{font-size:12px;font-weight:600;border-radius:999px;padding:1px 9px}
+.c1{background:#e9e9f4;color:#55547f}
+.c2{background:#fdeee3;color:#b8591f}
+
+/* 주간 표: 토·일 대신 이번 주 메모 칸 */
+table.week th.memohead{width:22%;background:#fff7e0;color:#8a6a1a}
+table.week td.weekmemo{background:#fffbea;padding:0;vertical-align:top;min-width:180px}
+table.week td.weekmemo textarea{height:100%;min-height:560px;border:0;background:transparent;padding:10px;font-size:14px;line-height:1.6;resize:none}
+
+/* 연간 캘린더: 오늘 날짜는 글자 자체에 보라 동그라미 배경 (뒤에 깔리지 않게) */
+.mweek span.today{width:22px;margin:0 auto;border-radius:50%;background:var(--ac);color:#fff;font-weight:700}
+
+/* 오늘 표시를 더 진하게 (연간·월간·주간) */
+.mweek span.today{width:24px;height:24px;line-height:24px;background:#3f3d73;color:#fff;font-weight:800;box-shadow:0 1px 4px rgba(63,61,115,.5)}
+.mweek.now{background:#ffe58a}
+.cal>div.td{background:#ffe58a}
+.cal>div.td>span:first-child{display:inline-block;min-width:26px;height:26px;line-height:26px;text-align:center;border-radius:50%;background:#3f3d73;color:#fff;font-weight:800;box-shadow:0 1px 4px rgba(63,61,115,.5)}
+table.week th.tdh{background:#ffd54a;color:#3b2f00;font-weight:800}
+table.week th.tdh small{color:#5a4700}
+table.week td.tdc,table.week tr.evrow td.tdc{background:#fff0b3}
+
+/* 이번 주 메모: 표에서 떨어진 둥근 상자 */
+.weekflex{display:flex;gap:18px;align-items:flex-start}
+.weekflex .weekwrap{flex:1;min-width:0}
+.weekmemobox{flex:none;width:260px;position:sticky;top:12px;background:#fffbea;border:1px solid #f0dc9a;border-radius:16px;padding:14px 14px 16px;box-shadow:0 2px 10px rgba(138,106,26,.12)}
+.weekmemobox h4{margin:0 0 8px;font-size:15px;color:#8a6a1a}
+.weekmemobox textarea{width:100%;min-height:420px;border:1px solid #f0e3b0;border-radius:10px;background:#fff;padding:10px 12px;font-size:14px;line-height:1.6;resize:vertical;margin:0}
+.weekmemobox textarea:focus{border-color:#d9b84a;box-shadow:0 0 0 3px rgba(217,184,74,.25)}
+@media(max-width:1000px){.weekflex{flex-direction:column}.weekmemobox{width:auto;position:static}}
+
+/* 주간 표 폭: 메모 상자와 같이 있어도 금요일이 잘리지 않게 */
+.weekflex table.week{min-width:0}
+.weekflex .weekwrap{overflow-x:visible}
+.weekmemobox{width:230px}
+.weekflex{gap:22px}
+
+/* 시간표: 이 날만 바꾸기 */
+.ttlabel{align-items:center}
+.ttlabel b.chg,b.ttkey.chg{background:#ffe3e3;color:#c0392b;box-shadow:inset 0 0 0 1.5px #f2a5a5}
+.ttlabel b s{opacity:.7}
+.ttedit{margin-left:auto;padding:0 6px;border:0;background:transparent;color:#9a9db3;font-size:13px;opacity:0;cursor:pointer;line-height:1.4}
+table.week td:hover .ttedit,.ttedit:focus{opacity:1}
+.ttedit:hover{color:var(--ac2);background:var(--soft);border-radius:6px}
+.ttform{margin:4px 6px 0;padding:8px;border:1px solid var(--line);border-radius:10px;background:#fff;box-shadow:0 4px 14px rgba(40,40,70,.15);display:grid;gap:5px;position:relative;z-index:4}
+.ttform small{color:var(--mute)}
+.ttform label{display:grid;grid-template-columns:34px 1fr;align-items:center;font-size:12px;color:var(--mute)}
+.ttform input{height:28px;margin:0;font-size:13px;border:1px solid var(--line);border-radius:6px;padding:0 8px}
+.ttbtns{display:flex;gap:4px;margin-top:2px}
+.ttbtns button{padding:3px 10px;font-size:12px;margin:0}
+.ttbtns button:first-child{background:var(--ac);border-color:var(--ac);color:#fff}
+
+/* 스크롤 없애기: 칸은 글 길이에 맞춰 늘어나고(안쪽 스크롤 없음), 표는 화면 폭에 맞춘다 */
+table.week td textarea,td.tt textarea,.weekmemobox textarea{field-sizing:content;overflow:hidden;resize:none}
+table.week td textarea{min-height:64px}
+td.tt textarea{min-height:84px}
+.weekmemobox textarea{min-height:420px}
+.weekwrap,.weekflex .weekwrap{overflow:visible}
+table.week{width:100%;table-layout:fixed;min-width:0}
+
+/* 주간 표의 시간표 과목: 칸 가운데 정렬 (✎ 버튼은 오른쪽 위에 띄움) */
+.ttlabel{position:relative;justify-content:center;padding:6px 22px 0}
+.ttedit{position:absolute;right:2px;top:2px;margin:0}
+
+/* 이 날만 바뀐 시간표 칸: 칸 전체를 연한 빨강으로 (오늘 열 노랑보다 우선) */
+table.week td.ttchg,table.week td.tdc.ttchg{background:#ffdcdc;box-shadow:inset 0 0 0 2px #f2a5a5}
+table.week td.ttchg textarea{background:transparent}
+
+/* 이 날만 바뀐 시간표: 연보라 (칸 전체 + 과목 알약). 원래 과목은 보여 주지 않는다 */
+table.week td.ttchg,table.week td.tdc.ttchg{background:#e9e0ff;box-shadow:inset 0 0 0 2px #b9a3f5}
+.ttlabel b.chg,b.ttkey.chg{background:#d4c4ff;color:#3d2a8f;box-shadow:inset 0 0 0 1.5px #a78bf5}
+
+/* 시간표 칸 안에서 바로 고치기 */
+.ttlabel b{cursor:pointer}
+.ttinline{display:grid;gap:4px;padding:6px;margin:0}
+.ttinline input{width:100%;height:30px;margin:0;padding:0 8px;text-align:center;font-size:13px;border:2px solid var(--ac);border-radius:8px;background:#fff}
+.ttinline input+input{border-color:#e8854f}
+.ttinline .ttbtns{display:flex;gap:4px;justify-content:center}
+.ttinline .ttbtns button{padding:3px 12px;font-size:12px;margin:0}
+.ttinline .ttbtns button:first-child{background:var(--ac);border-color:var(--ac);color:#fff}
+
+/* 시간표 칸 안에서 고치기: 좁은 칸에서도 안 잘리게 */
+.ttinline .ttbtns{flex-wrap:wrap}
+.ttinline input.k2{border-color:#e8854f}
+table.week td{overflow:visible}
+
+/* 일정 줄: 입력 상자는 테두리가 보이게(2줄), 아래 '다른 기록'은 선과 이름표로 구별 */
+table.week tr.evrow td textarea.evbox{display:block;width:calc(100% - 12px);margin:6px;min-height:46px;padding:6px 8px;border:1.5px solid #cdbff0;border-radius:8px;background:#fff;font-size:13px;line-height:1.45;box-shadow:inset 0 1px 2px rgba(60,50,120,.08)}
+table.week tr.evrow td textarea.evbox:focus{border-color:var(--ac);box-shadow:0 0 0 3px rgba(107,106,155,.18)}
+table.week tr.evrow td textarea.evbox::placeholder{color:#b7b2d3}
+.evitems{margin:2px 6px 6px;padding-top:4px;border-top:1px dashed #cfd0dc}
+.evitems>small{display:block;margin:0 0 2px;color:var(--mute);font-size:10.5px;letter-spacing:.02em}
+
+/* 시간표 변경을 취소하면 그 칸의 메모(변경 이유)에 취소선 */
+table.week textarea.struck{text-decoration:line-through;text-decoration-thickness:1.5px;color:#9a9db3}
+
+/* 오늘 표시: 노랑 대신 튀지 않는 연한 파랑 (연간·월간·주간·목록) */
+.mweek span.today{background:#dfe7fb;color:#2f3f8f;font-weight:700;box-shadow:none}
+.mweek.now{background:#f1f5ff}
+.cal>div.td{background:#f3f7ff}
+.cal>div.td>span:first-child{background:#dfe7fb;color:#2f3f8f;font-weight:700;box-shadow:none}
+table.week th.tdh{background:#e3ecff;color:#2f3f8f;font-weight:700}
+table.week th.tdh small{color:#5870b8}
+table.week td.tdc,table.week tr.evrow td.tdc{background:#f4f7ff}
+.tdr,.tdr td{background:#f3f7ff}

@@ -25,12 +25,18 @@ create table meetings   (id uuid primary key default gen_random_uuid(), user_id 
 create table day_memos (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
   date date not null, text text, unique (user_id, date));
 create table period_notes (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
-  date date not null, period int not null, text text, unique (user_id, date, period));
+  date date not null, period int not null, text text, struck boolean default false, unique (user_id, date, period));
+create table tt_changes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  created_at timestamptz default now(),
+  date date not null, kind text not null, period int not null, text text,
+  unique (user_id, date, kind, period));
 create table memos      (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
   title text, content text not null, date date);
 
 do $$ declare t text; begin
-  foreach t in array array['students','events','tests','scores','notes','timetable','checklists','checks','progress','meetings','memos','day_memos','period_notes'] loop
+  foreach t in array array['students','events','tests','scores','notes','timetable','checklists','checks','progress','meetings','memos','day_memos','period_notes','tt_changes'] loop
     execute format('alter table %I enable row level security', t);
     execute format('create policy "own rows" on %I for all using (user_id = auth.uid()) with check (user_id = auth.uid())', t);
   end loop;

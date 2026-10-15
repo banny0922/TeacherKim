@@ -14,16 +14,24 @@ create table if not exists period_notes (
   created_at timestamptz default now(),
   date date not null, period int not null, text text, unique (user_id, date, period));
 
+create table if not exists tt_changes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  created_at timestamptz default now(),
+  date date not null, kind text not null, period int not null, text text,
+  unique (user_id, date, kind, period));
+
 -- 2) 빠진 칸
 alter table checklists add column if not exists date date;
 alter table memos      add column if not exists date date;
 alter table meetings   add column if not exists title text;
 alter table scores     add column if not exists mark text;
 alter table students   add column if not exists photo text;
+alter table period_notes add column if not exists struck boolean default false;
 
 -- 3) 보안(RLS): 본인 데이터만 접근
 do $$ declare t text; begin
-  foreach t in array array['students','events','tests','scores','notes','timetable','checklists','checks','progress','meetings','memos','day_memos','period_notes'] loop
+  foreach t in array array['students','events','tests','scores','notes','timetable','checklists','checks','progress','meetings','memos','day_memos','period_notes','tt_changes'] loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists "own rows" on %I', t);
     execute format('create policy "own rows" on %I for all using (user_id = auth.uid()) with check (user_id = auth.uid())', t);

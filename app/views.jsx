@@ -58,21 +58,54 @@ function DayItems({ items, max, go }) {
 
 /* 학사일정 (월간 달력) */
 export function Calendar({ db, add, del, uid, load, go }) {
+  const [view, setView] = useState('year'); // 기본: 연간 캘린더
+  const [year, setYear] = useState(new Date().getFullYear());
   const [m, setM] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [sel, setSel] = useState(today());
-  const [week, setWeek] = useState(false);
   const y = m.getFullYear(), mo = m.getMonth();
   const days = new Date(y, mo + 1, 0).getDate();
   const iso = (d) => `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   const cells = [...Array((m.getDay() + 6) % 7).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
   while (cells.length % 7) cells.push(null);
-  if (week) {
-    const shift = (n) => { const d = new Date(sel + 'T00:00:00'); d.setDate(d.getDate() + n); setSel(d.toLocaleDateString('sv')); setM(new Date(d.getFullYear(), d.getMonth(), 1)); };
+
+  const showMonth = (yy, mm) => { setM(new Date(yy, mm, 1)); setYear(yy); setView('month'); };
+  const showWeek = (d) => { setSel(d); setM(new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, 1)); setYear(+d.slice(0, 4)); setView('week'); };
+  const shiftWeek = (n) => { const d = new Date(sel + 'T00:00:00'); d.setDate(d.getDate() + n); showWeek(d.toLocaleDateString('sv')); };
+  const now = new Date();
+  const mondayOf = (d) => { const x = new Date(d + 'T00:00:00'); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x.toLocaleDateString('sv'); };
+  const menu = (
+    <div className="calmenu">
+      <button className={view === 'year' ? 'on' : ''} onClick={() => setView('year')}>연간캘린더</button>
+      <button className={view === 'month' && y === now.getFullYear() && mo === now.getMonth() ? 'on' : ''} onClick={() => showMonth(now.getFullYear(), now.getMonth())}>이번달</button>
+      <button className={view === 'week' && mondayOf(sel) === mondayOf(today()) ? 'on' : ''} onClick={() => showWeek(today())}>이번주</button>
+    </div>
+  );
+
+  if (view === 'year') {
     return (
       <>
-        <button onClick={() => setWeek(false)}>← 월간 보기</button>
-        <button onClick={() => shift(-7)}>◀ 이전 주</button>
-        <button onClick={() => shift(7)}>다음 주 ▶</button>
+        {menu}
+        <h3 className="monthname">
+          <button onClick={() => setYear(year - 1)}>◀</button>
+          <span>{year}</span>
+          <button onClick={() => setYear(year + 1)}>▶</button>
+          <button onClick={() => setYear(now.getFullYear())}>올해</button>
+        </h3>
+        <div className="yeargrid">
+          {Array.from({ length: 12 }, (_, k) => <MiniMonth key={k} year={year} k={k} onMonth={(kk) => showMonth(year, kk)} onWeek={showWeek} />)}
+        </div>
+        <p className="hint" style={{ marginTop: 10 }}>가로 한 줄(주)을 누르면 그 주로, 달 이름을 누르면 그 달로 이동합니다. 연한 파란 줄은 이번 주입니다.</p>
+      </>
+    );
+  }
+  if (view === 'week') {
+    return (
+      <>
+        {menu}
+        <div className="weekbar">
+          <button onClick={() => shiftWeek(-7)}>◀ 이전 주</button>
+          <button onClick={() => shiftWeek(7)}>다음 주 ▶</button>
+        </div>
         <Week sel={sel} db={db} add={add} del={del} uid={uid} load={load} go={go} />
       </>
     );
@@ -80,30 +113,52 @@ export function Calendar({ db, add, del, uid, load, go }) {
   const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   return (
     <div>
-      <div>
+      {menu}
       <h3 className="monthname">
         <button onClick={() => setM(new Date(y, mo - 1, 1))}>◀</button>
         <span>{MON[mo]}</span> <small>{y}</small>
         <button onClick={() => setM(new Date(y, mo + 1, 1))}>▶</button>
-        <button onClick={() => { const d = new Date(); setM(new Date(d.getFullYear(), d.getMonth(), 1)); }}>오늘</button>
       </h3>
       <div className="cal">
         {['월', '화', '수', '목', '금', '토', '일'].map((d, i) => <div key={d} className={`h ${i === 6 ? 'sun' : i === 5 ? 'sat' : ''}`}>{d}</div>)}
         {cells.map((d, i) => d === null ? <div key={i} className="h" /> : (
-          <div key={i} className={`${iso(d) === today() ? 'td' : ''} ${iso(d) === sel ? 'sel' : ''}`} onClick={() => { setSel(iso(d)); setWeek(true); }}>
+          <div key={i} className={`${iso(d) === today() ? 'td' : ''} ${iso(d) === sel ? 'sel' : ''}`} onClick={() => showWeek(iso(d))}>
             <span className={holidayName(iso(d)) || i % 7 === 6 ? 'sun' : i % 7 === 5 ? 'sat' : ''}>{d}</span>{holidayName(iso(d)) && <span className="hol">{holidayName(iso(d))}</span>}
             <DayItems items={dayItems(db, iso(d))} max={5} go={go} />
           </div>
         ))}
       </div>
-      </div>
     </div>
   );
 }
 
+// 연간 캘린더의 한 달: 숫자만 보인다. 가로 한 줄(주)을 누르면 그 주로, 달 이름을 누르면 그 달로
+function MiniMonth({ year, k, onMonth, onWeek }) {
+  const lead = (new Date(year, k, 1).getDay() + 6) % 7, n = new Date(year, k + 1, 0).getDate();
+  const cells = [...Array(lead).fill(null), ...Array.from({ length: n }, (_, i) => i + 1)];
+  while (cells.length % 7) cells.push(null);
+  const weeks = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  const iso = (d) => `${year}-${String(k + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const t = today();
+  return (
+    <div className="mini">
+      <h4 onClick={() => onMonth(k)} title="이 달로 이동">{k + 1}월</h4>
+      <div className="mhead">{['월', '화', '수', '목', '금', '토', '일'].map((d, i) => <span key={d} className={i === 6 ? 'sun' : i === 5 ? 'sat' : ''}>{d}</span>)}</div>
+      {weeks.map((w, wi) => (
+        <div key={wi} className={`mweek ${w.some((d) => d && iso(d) === t) ? 'now' : ''}`} onClick={() => onWeek(iso(w.find(Boolean)))} title="이 주로 이동">
+          {w.map((d, i) => d ? (
+            <span key={i} title={holidayName(iso(d)) || ''} className={`${holidayName(iso(d)) || i === 6 ? 'sun' : i === 5 ? 'sat' : ''} ${iso(d) === t ? 'today' : ''}`}>{d}</span>
+          ) : <span key={i} />)}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /* 한 주(월~일) 표: 가로 = 요일, 세로 = 1~6교시. 위 한 줄은 일정(행사), 교시 칸은 메모 */
 function Week({ sel, db, add, del, uid, load, go }) {
+  const [editCell, setEditCell] = useState(null); // 시간표를 이 날만 바꾸는 중인 칸 '날짜|교시'
   const start = new Date(sel + 'T00:00:00'); start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(d.getDate() + i); return d.toLocaleDateString('sv'); });
   // 하루 일정은 한 칸(최대 3줄)에 자유롭게 입력: 그날의 기존 일정을 지우고 한 건으로 다시 저장
@@ -117,8 +172,79 @@ function Week({ sel, db, add, del, uid, load, go }) {
     load();
   };
   const slot = (date, period) => db.period_notes.find((n) => n.date === date && n.period === period)?.text ?? '';
-  // 수업 시간표(월~금)에 적어 둔 과목을 칸의 안내 문구로 보여 줌
-  const plan = (i, period) => db.timetable.find((t) => t.kind === 'subject' && t.day === i + 1 && t.period === period)?.text ?? '';
+  const isStruck = (date, period) => !!db.period_notes.find((n) => n.date === date && n.period === period)?.struck;
+  // 시간표 탭의 내용을 교시 칸 위에 보여 준다 (월~금, 공휴일 제외). 학급 시간표 = 보라, 수업 시간표 = 주황.
+  // 그 날만 바뀐 시간표(tt_changes)가 있으면 그것을 보여 주고 빨간색으로 표시한다.
+  const base = (kind, i, period) => db.timetable.find((t) => t.kind === kind && t.day === i + 1 && t.period === period)?.text?.trim() ?? '';
+  const chg = (kind, date, period) => (db.tt_changes ?? []).find((c) => c.date === date && c.kind === kind && c.period === period);
+  const tt = (kind, i, period) => { if (i >= 5 || holidayName(days[i])) return ''; const c = chg(kind, days[i], period); return c ? (c.text ?? '') : base(kind, i, period); };
+  // 한 칸(날짜·교시)의 시간표를 고친다. 바뀐 칸은 "바뀐 값"을 고치고, 안 바뀐 칸은 눌린 과목을 고친다.
+  // 그 칸의 메모에 취소선을 켜고 끈다 (메모가 없거나 period_notes.struck 칸이 아직 없으면 조용히 무시)
+  const strike = (d, p, on) => sb.from('period_notes').update({ struck: on }).eq('date', d).eq('period', p).then(() => {}, () => {});
+  const clearTT = async (d, p) => {
+    const { error } = await sb.from('tt_changes').delete().eq('date', d).eq('period', p);
+    if (error) return alert(error.message);
+    await strike(d, p, true); // 변경이 취소되었으니 이유를 적어 둔 메모도 취소선
+    setEditCell(null); saved(); load();
+  };
+  // 이 날 이 교시가 원래와 다르게 바뀌었는지, 어느 종류(학급/수업)에 바뀐 값이 저장돼 있는지
+  const changedKind = (d, i, p) => (i < 5 && !holidayName(d) ? ['class', 'subject'].find((kind) => { const c = chg(kind, d, p); return !!c && (c.text ?? '') !== base(kind, i, p); }) : undefined);
+  const ttChanged = (d, i, p) => !!changedKind(d, i, p);
+  const saveTT = async (d, i, p, kind, value) => {
+    const v = (value ?? '').trim();
+    const originals = [base('class', i, p), base('subject', i, p)].filter(Boolean);
+    // 원래 시간표 값을 그대로 쓰면 = 변경 취소
+    if (ttChanged(d, i, p) && originals.includes(v)) return clearTT(d, p);
+    const b = base(kind, i, p), c = chg(kind, d, p);
+    if (v === b) {
+      if (c) { const { error } = await sb.from('tt_changes').delete().eq('id', c.id); if (error) return alert(error.message); await strike(d, p, true); }
+    } else {
+      const { error } = await sb.from('tt_changes').upsert({ user_id: uid, date: d, kind, period: p, text: v }, { onConflict: 'user_id,date,kind,period' });
+      if (error) return alert(/tt_changes/.test(error.message) ? '시간표 변경을 저장할 곳이 아직 없습니다. Supabase SQL Editor에서 migrate.sql을 한 번 실행해 주세요.' : error.message);
+      await strike(d, p, false); // 새로 바꿨으니 취소선 해제
+    }
+    setEditCell(null); saved(); load();
+  };
+  const ttCell = (d, i, p) => {
+    if (i >= 5 || holidayName(d)) return null;
+    const key = d + '|' + p;
+    const ck = changedKind(d, i, p);
+    // 바뀐 칸이면 어느 과목을 눌러도(또는 ✎) 바뀐 값을 고친다. 안 바뀐 칸은 눌린 과목, ✎는 학급 → 수업 순
+    const defKind = tt('class', i, p) || !tt('subject', i, p) ? 'class' : 'subject';
+    const open = (kind) => setEditCell(key + '|' + (ck ?? kind));
+    const editing = editCell && editCell.startsWith(key + '|') ? editCell.split('|')[2] : null;
+    // 고치는 중: 그 칸 안에서 바로 입력. 저장(Enter) / 취소 — 바뀐 칸에서 취소 = 변경 취소(원래 시간표로), Esc = 그냥 닫기
+    if (editing) {
+      return (
+        <form className="ttinline" onSubmit={(e) => { e.preventDefault(); saveTT(d, i, p, editing, new FormData(e.target).get('v')); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setEditCell(null); }}>
+          <input name="v" className={editing === 'subject' ? 'k2' : 'k1'} defaultValue={tt(editing, i, p)} placeholder={editing === 'subject' ? '수업 시간표' : '학급 시간표'} autoFocus onFocus={(e) => e.target.select()} />
+          <div className="ttbtns">
+            <button>저장</button>
+            {ck ? <button type="button" onClick={() => clearTT(d, p)} title="이 날만 바꾼 것을 지우고 원래 시간표로 되돌립니다">변경 취소</button>
+              : <button type="button" onClick={() => setEditCell(null)}>취소</button>}
+          </div>
+        </form>
+      );
+    }
+    // 바뀐 칸은 바뀐 값만 보여 준다 (원래 값은 보여 주지 않음)
+    const pill = (kind, cls) => {
+      const v = tt(kind, i, p);
+      if (!v) return null;
+      const changed = ck === kind;
+      if (ck && !changed) return null;
+      return <b className={`${cls} ${changed ? 'chg' : ''}`} onClick={() => open(kind)} title={(changed ? '이 날만 바뀐 시간표' : kind === 'class' ? '학급 시간표' : '수업 시간표') + ' (눌러서 고치기)'}>{v}</b>;
+    };
+    return (
+      <div className="ttlabel">
+        {pill('class', 'c1')}{pill('subject', 'c2')}
+        <button type="button" className="ttedit" title="이 날 시간표 고치기" onClick={() => open(defKind)}>✎</button>
+      </div>
+    );
+  };
+  const hasTT = db.timetable.some((t) => t.text?.trim());
+  const weekKey = days[0]; // 그 주의 월요일
+  const weekMemo = db.day_memos.find((m) => m.date === weekKey)?.text ?? '';
   const upsert = async (table, row, conflict) => {
     const { error } = await sb.from(table).upsert({ user_id: uid, ...row }, { onConflict: conflict });
     if (error) alert(error.message); else saved();
@@ -127,28 +253,36 @@ function Week({ sel, db, add, del, uid, load, go }) {
   return (
     <>
       <h3>{days[0]} ~ {days[6]}</h3>
+      {hasTT && <p className="hint" style={{ margin: '0 0 6px' }}>교시 칸 위의 글씨는 시간표에서 가져온 것입니다. <b className="ttkey c1">학급 시간표</b> <b className="ttkey c2">수업 시간표</b> <b className="ttkey c1 chg">이 날만 변경</b> — 칸에 마우스를 올리면 나오는 ✎로 그 날만 바꿉니다. 늘 바뀌는 것은 시간표 탭에서 고치세요.</p>}
+      <div className="weekflex">
       <div className="weekwrap">
         <table className="week">
           <tbody>
             <tr>
               <th style={{ width: 54 }}>교시</th>
-              {days.map((d, i) => <th key={d} className={`${d === today() ? 'tdh' : ''} ${holidayName(d) || i === 6 ? 'sun' : i === 5 ? 'sat' : ''}`}>{'월화수목금토일'[i]}<br /><small>{d.slice(5)}</small>{holidayName(d) && <small className="hol">{holidayName(d)}</small>}</th>)}
+              {days.slice(0, 5).map((d, i) => <th key={d} className={`${d === today() ? 'tdh' : ''} ${holidayName(d) ? 'sun' : ''}`}>{'월화수목금'[i]}<br /><small>{d.slice(5)}</small>{holidayName(d) && <small className="hol">{holidayName(d)}</small>}</th>)}
             </tr>
             <tr className="evrow">
               <th>일정</th>
-              {days.map((d) => (
+              {days.slice(0, 5).map((d) => (
                 <td key={d} className={d === today() ? 'tdc' : ''}>
-                  <textarea key={evText(d)} rows="3" defaultValue={evText(d)} onBlur={(e) => saveEv(d, e.target.value)} />
-                  <DayItems items={dayItems(db, d, true)} go={go} />
+                  <textarea className="evbox" key={evText(d)} rows="2" defaultValue={evText(d)} placeholder="일정 쓰기" onBlur={(e) => saveEv(d, e.target.value)} />
+                  {dayItems(db, d, true).length > 0 && (
+                    <div className="evitems">
+                      <small>다른 기록</small>
+                      <DayItems items={dayItems(db, d, true)} go={go} />
+                    </div>
+                  )}
                 </td>
               ))}
             </tr>
             {[1, 2, 3, 4, 5, 6].map((p) => (
               <tr key={p}>
                 <th>{p}</th>
-                {days.map((d, i) => (
-                  <td key={d} className={d === today() ? 'tdc' : ''}>
-                    <textarea key={slot(d, p)} rows="3" defaultValue={slot(d, p)} placeholder={plan(i, p)}
+                {days.slice(0, 5).map((d, i) => (
+                  <td key={d} className={`${d === today() ? 'tdc' : ''} ${ttChanged(d, i, p) ? 'ttchg' : ''}`}>
+                    {ttCell(d, i, p)}
+                    <textarea key={slot(d, p)} className={isStruck(d, p) ? 'struck' : ''} title={isStruck(d, p) ? '시간표 변경이 취소되어 취소선이 그어졌습니다' : undefined} rows="3" defaultValue={slot(d, p)}
                       onBlur={(e) => e.target.value !== slot(d, p) && upsert('period_notes', { date: d, period: p, text: e.target.value }, 'user_id,date,period')} />
                   </td>
                 ))}
@@ -156,6 +290,12 @@ function Week({ sel, db, add, del, uid, load, go }) {
             ))}
           </tbody>
         </table>
+      </div>
+      <aside className="weekmemobox">
+        <h4>이번 주 메모</h4>
+        <textarea key={weekMemo} defaultValue={weekMemo} placeholder="이번 주에 챙길 것, 알림, 기록을 적어 두세요"
+          onBlur={(e) => e.target.value !== weekMemo && upsert('day_memos', { date: weekKey, text: e.target.value }, 'user_id,date')} />
+      </aside>
       </div>
     </>
   );
