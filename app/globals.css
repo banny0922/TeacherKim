@@ -578,3 +578,9 @@ table.week td.tdc,table.week tr.evrow td.tdc{background:#f4f7ff}
 .statmode{display:flex;gap:8px;margin:0 0 12px}
 .statmode button{padding:9px 22px;font-size:16px;font-weight:600;border-radius:999px;background:#fff;color:var(--ac2,#6f78c9);border:1px solid var(--line)}
 .statmode button.on{background:var(--ac2,#6f78c9);color:#fff;border-color:transparent}
+
+/* 개인별 통계: 학생 선택 상자 */
+.pidbar{margin:4px 0 14px}
+.pidbar select.pidsel{height:48px;min-width:260px;margin:0;padding:0 48px 0 22px;border-radius:999px;border:0;background-color:#eceefb;color:#4b4c80;font-size:19px;font-weight:700;cursor:pointer;background-position:right 20px center;background-size:16px}
+.pidbar select.pidsel:hover{background-color:#e2e5f8}
+.pidbar select.pidsel:focus{background-color:#fff;box-shadow:0 0 0 2px var(--ac)}

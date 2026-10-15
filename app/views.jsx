@@ -1146,11 +1146,11 @@ export function Stats({ db, S }) {
             });
             return (
               <>
-                <h3 className="bigtitle">개인별 통계
+                <div className="pidbar">
                   <select className="pidsel" value={me.id} onChange={(e) => setPid(e.target.value)}>
                     {S.map((s, i) => <option key={s.id} value={s.id}>{numOf(s, i)}번 {s.name}</option>)}
                   </select>
-                </h3>
+                </div>
                 <div className="statcards">
                   <div><small>「{cur}」 평균</small><b className={my.avg !== null && my.avg < thr ? 'lo' : ''}>{f2(my.avg)}</b></div>
                   <div><small>등수</small><b>{myRank ? myRank + '위 / ' + ranked.length : '-'}</b></div>
