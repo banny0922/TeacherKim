@@ -12,7 +12,7 @@ const numOf = (s, i) => s.num ?? i + 1;
 const NLX = String.fromCharCode(10);
 
 // 사진을 긴 쪽 320px로 줄여서 JPEG data URL로 만든다 (DB에 작게 저장하기 위해)
-async function resizePhoto(file, max = 320) {
+async function resizePhoto(file, max = 320, cap = 90000) {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('사진을 읽을 수 없습니다.')); i.src = url; });
@@ -21,7 +21,7 @@ async function resizePhoto(file, max = 320) {
     c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
     c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
     let q = 0.85, out = c.toDataURL('image/jpeg', q);
-    while (out.length > 90000 && q > 0.4) { q -= 0.1; out = c.toDataURL('image/jpeg', q); }
+    while (out.length > cap && q > 0.4) { q -= 0.1; out = c.toDataURL('image/jpeg', q); }
     return out;
   } finally { URL.revokeObjectURL(url); }
 }
@@ -173,13 +173,14 @@ function Week({ sel, db, add, del, uid, load, go }) {
   };
   const slot = (date, period) => db.period_notes.find((n) => n.date === date && n.period === period)?.text ?? '';
   const isStruck = (date, period) => !!db.period_notes.find((n) => n.date === date && n.period === period)?.struck;
-  // 시간표 탭의 내용을 교시 칸 위에 보여 준다 (월~금, 공휴일 제외). 학급 시간표 = 보라, 수업 시간표 = 주황.
-  // 그 날만 바뀐 시간표(tt_changes)가 있으면 그것을 보여 주고 빨간색으로 표시한다.
-  const base = (kind, i, period) => db.timetable.find((t) => t.kind === kind && t.day === i + 1 && t.period === period)?.text?.trim() ?? '';
-  const chg = (kind, date, period) => (db.tt_changes ?? []).find((c) => c.date === date && c.kind === kind && c.period === period);
-  const tt = (kind, i, period) => { if (i >= 5 || holidayName(days[i])) return ''; const c = chg(kind, days[i], period); return c ? (c.text ?? '') : base(kind, i, period); };
-  // 한 칸(날짜·교시)의 시간표를 고친다. 바뀐 칸은 "바뀐 값"을 고치고, 안 바뀐 칸은 눌린 과목을 고친다.
-  // 그 칸의 메모에 취소선을 켜고 끈다 (메모가 없거나 period_notes.struck 칸이 아직 없으면 조용히 무시)
+  // 시간표 탭(학급 시간표)의 내용을 교시 칸 위에 보여 준다 (월~금, 공휴일 제외).
+  // 그 날만 바뀐 시간표(tt_changes)가 있으면 그것만 보여 주고 연보라 칸으로 표시한다. (예전에 '수업' 쪽에 저장된 변경도 같은 칸의 변경으로 본다)
+  const baseTT = (i, period) => db.timetable.find((t) => t.kind === 'class' && t.day === i + 1 && t.period === period)?.text?.trim() ?? '';
+  const chgRow = (date, period) => { const rows = (db.tt_changes ?? []).filter((c) => c.date === date && c.period === period); return rows.find((c) => c.kind === 'class') ?? rows[0]; };
+  const offDay = (i) => i >= 5 || !!holidayName(days[i]);
+  const ttVal = (i, period) => { if (offDay(i)) return ''; const c = chgRow(days[i], period); return c ? (c.text ?? '') : baseTT(i, period); };
+  const ttChanged = (d, i, p) => { if (offDay(i)) return false; const c = chgRow(d, p); return !!c && (c.text ?? '') !== baseTT(i, p); };
+  // 그 칸의 메모(변경 이유)에 취소선을 켜고 끈다
   const strike = (d, p, on) => sb.from('period_notes').update({ struck: on }).eq('date', d).eq('period', p).then(() => {}, () => {});
   const clearTT = async (d, p) => {
     const { error } = await sb.from('tt_changes').delete().eq('date', d).eq('period', p);
@@ -187,58 +188,41 @@ function Week({ sel, db, add, del, uid, load, go }) {
     await strike(d, p, true); // 변경이 취소되었으니 이유를 적어 둔 메모도 취소선
     setEditCell(null); saved(); load();
   };
-  // 이 날 이 교시가 원래와 다르게 바뀌었는지, 어느 종류(학급/수업)에 바뀐 값이 저장돼 있는지
-  const changedKind = (d, i, p) => (i < 5 && !holidayName(d) ? ['class', 'subject'].find((kind) => { const c = chg(kind, d, p); return !!c && (c.text ?? '') !== base(kind, i, p); }) : undefined);
-  const ttChanged = (d, i, p) => !!changedKind(d, i, p);
-  const saveTT = async (d, i, p, kind, value) => {
+  const saveTT = async (d, i, p, value) => {
     const v = (value ?? '').trim();
-    const originals = [base('class', i, p), base('subject', i, p)].filter(Boolean);
     // 원래 시간표 값을 그대로 쓰면 = 변경 취소
-    if (ttChanged(d, i, p) && originals.includes(v)) return clearTT(d, p);
-    const b = base(kind, i, p), c = chg(kind, d, p);
-    if (v === b) {
-      if (c) { const { error } = await sb.from('tt_changes').delete().eq('id', c.id); if (error) return alert(error.message); await strike(d, p, true); }
-    } else {
-      const { error } = await sb.from('tt_changes').upsert({ user_id: uid, date: d, kind, period: p, text: v }, { onConflict: 'user_id,date,kind,period' });
-      if (error) return alert(/tt_changes/.test(error.message) ? '시간표 변경을 저장할 곳이 아직 없습니다. Supabase SQL Editor에서 migrate.sql을 한 번 실행해 주세요.' : error.message);
-      await strike(d, p, false); // 새로 바꿨으니 취소선 해제
-    }
+    if (v === baseTT(i, p)) { if (ttChanged(d, i, p)) return clearTT(d, p); setEditCell(null); return; }
+    // 옛 '수업' 쪽 변경이 남아 있으면 정리하고, 학급 시간표 변경으로 저장
+    const old = await sb.from('tt_changes').delete().eq('date', d).eq('period', p).eq('kind', 'subject');
+    if (old.error && !/tt_changes/.test(old.error.message)) return alert(old.error.message);
+    const { error } = await sb.from('tt_changes').upsert({ user_id: uid, date: d, kind: 'class', period: p, text: v }, { onConflict: 'user_id,date,kind,period' });
+    if (error) return alert(/tt_changes/.test(error.message) ? '시간표 변경을 저장할 곳이 아직 없습니다. Supabase SQL Editor에서 migrate.sql을 한 번 실행해 주세요.' : error.message);
+    await strike(d, p, false); // 새로 바꿨으니 취소선 해제
     setEditCell(null); saved(); load();
   };
   const ttCell = (d, i, p) => {
-    if (i >= 5 || holidayName(d)) return null;
+    if (offDay(i)) return null;
     const key = d + '|' + p;
-    const ck = changedKind(d, i, p);
-    // 바뀐 칸이면 어느 과목을 눌러도(또는 ✎) 바뀐 값을 고친다. 안 바뀐 칸은 눌린 과목, ✎는 학급 → 수업 순
-    const defKind = tt('class', i, p) || !tt('subject', i, p) ? 'class' : 'subject';
-    const open = (kind) => setEditCell(key + '|' + (ck ?? kind));
-    const editing = editCell && editCell.startsWith(key + '|') ? editCell.split('|')[2] : null;
+    const open = () => setEditCell(key);
+    const changed = ttChanged(d, i, p), v = ttVal(i, p);
     // 고치는 중: 그 칸 안에서 바로 입력. 저장(Enter) / 취소 — 바뀐 칸에서 취소 = 변경 취소(원래 시간표로), Esc = 그냥 닫기
-    if (editing) {
+    if (editCell === key) {
       return (
-        <form className="ttinline" onSubmit={(e) => { e.preventDefault(); saveTT(d, i, p, editing, new FormData(e.target).get('v')); }}
+        <form className="ttinline" onSubmit={(e) => { e.preventDefault(); saveTT(d, i, p, new FormData(e.target).get('v')); }}
           onKeyDown={(e) => { if (e.key === 'Escape') setEditCell(null); }}>
-          <input name="v" className={editing === 'subject' ? 'k2' : 'k1'} defaultValue={tt(editing, i, p)} placeholder={editing === 'subject' ? '수업 시간표' : '학급 시간표'} autoFocus onFocus={(e) => e.target.select()} />
+          <input name="v" className="k1" defaultValue={v} placeholder="시간표" autoFocus onFocus={(e) => e.target.select()} />
           <div className="ttbtns">
             <button>저장</button>
-            {ck ? <button type="button" onClick={() => clearTT(d, p)} title="이 날만 바꾼 것을 지우고 원래 시간표로 되돌립니다">변경 취소</button>
+            {changed ? <button type="button" onClick={() => clearTT(d, p)} title="이 날만 바꾼 것을 지우고 원래 시간표로 되돌립니다">변경 취소</button>
               : <button type="button" onClick={() => setEditCell(null)}>취소</button>}
           </div>
         </form>
       );
     }
-    // 바뀐 칸은 바뀐 값만 보여 준다 (원래 값은 보여 주지 않음)
-    const pill = (kind, cls) => {
-      const v = tt(kind, i, p);
-      if (!v) return null;
-      const changed = ck === kind;
-      if (ck && !changed) return null;
-      return <b className={`${cls} ${changed ? 'chg' : ''}`} onClick={() => open(kind)} title={(changed ? '이 날만 바뀐 시간표' : kind === 'class' ? '학급 시간표' : '수업 시간표') + ' (눌러서 고치기)'}>{v}</b>;
-    };
     return (
       <div className="ttlabel">
-        {pill('class', 'c1')}{pill('subject', 'c2')}
-        <button type="button" className="ttedit" title="이 날 시간표 고치기" onClick={() => open(defKind)}>✎</button>
+        {v && <b className={`c1 ${changed ? 'chg' : ''}`} onClick={open} title={(changed ? '이 날만 바뀐 시간표' : '시간표') + ' (눌러서 고치기)'}>{v}</b>}
+        <button type="button" className="ttedit" title="이 날 시간표 고치기" onClick={open}>✎</button>
       </div>
     );
   };
@@ -253,7 +237,7 @@ function Week({ sel, db, add, del, uid, load, go }) {
   return (
     <>
       <h3>{days[0]} ~ {days[6]}</h3>
-      {hasTT && <p className="hint" style={{ margin: '0 0 6px' }}>교시 칸 위의 글씨는 시간표에서 가져온 것입니다. <b className="ttkey c1">학급 시간표</b> <b className="ttkey c2">수업 시간표</b> <b className="ttkey c1 chg">이 날만 변경</b> — 칸에 마우스를 올리면 나오는 ✎로 그 날만 바꿉니다. 늘 바뀌는 것은 시간표 탭에서 고치세요.</p>}
+      {hasTT && <p className="hint" style={{ margin: '0 0 6px' }}>교시 칸 위의 글씨는 시간표에서 가져온 것입니다. <b className="ttkey c1 chg">이 날만 변경</b> — 칸에 마우스를 올리면 나오는 ✎로 그 날만 바꿉니다. 늘 바뀌는 것은 시간표 탭에서 고치세요.</p>}
       <div className="weekflex">
       <div className="weekwrap">
         <table className="week">
@@ -313,7 +297,6 @@ export function Timetable({ db, uid, load }) {
   };
   const grid = (kind, title) => (
     <div>
-      <h3 className="pill">{title}</h3>
       <table><tbody>
         <tr><th>교시</th>{DAYS.map((d) => <th key={d}>{d}</th>)}</tr>
         {[1, 2, 3, 4, 5, 6].map((p) => (
@@ -324,64 +307,60 @@ export function Timetable({ db, uid, load }) {
       </tbody></table>
     </div>
   );
-  return <div className="two">{grid('class', '학기 / 학급')}{grid('subject', '학기 / 수업')}</div>;
+  return <div className="ttone">{grid('class', '학기 / 학급')}</div>;
 }
 
-/* 수업진도: 학년도 월 탭(3~2), 왼쪽 목록 / 오른쪽 입력·수정 */
-export function Progress({ db, add, del, upd, focus }) {
-  const fr = db.progress.find((m) => m.id === focus?.id);
-  const now = fr ? new Date(fr.date + 'T00:00:00') : new Date();
-  const sy = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();
-  const MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
-  const [mo, setMo] = useState(now.getMonth() + 1);
-  const key = `${mo >= 3 ? sy : sy + 1}-${String(mo).padStart(2, '0')}`;
-  const rows = db.progress.filter((p) => p.date.startsWith(key)).sort((a, b) => a.date.localeCompare(b.date));
-  const [sel, setSel] = useState(fr?.id ?? null);
-  const cur = db.progress.find((p) => p.id === sel);
-  const [f, setF] = useState({ date: today(), subject: '', content: '' });
-  const subjects = [...new Set(['국어', '수학', '사회', '과학', '영어', '체육', '음악', '미술', '도덕', '실과', ...db.progress.map((p) => p.subject).filter(Boolean)])];
-  const pickMonth = (n) => { setMo(n); setSel(null); setF({ ...f, date: `${n >= 3 ? sy : sy + 1}-${String(n).padStart(2, '0')}-01`, content: '' }); };
-  const fields = (v, set) => (
-    <table className="counseltable"><tbody>
-      <tr><th style={{ width: 70 }}>날짜</th><td><input type="date" name="date" value={v.date} onChange={(e) => set({ ...v, date: e.target.value })} /></td></tr>
-      <tr><th>과목</th><td><input name="subject" list="subjects" value={v.subject ?? ''} placeholder="과목" onChange={(e) => set({ ...v, subject: e.target.value })} />
-        <datalist id="subjects">{subjects.map((n) => <option key={n} value={n} />)}</datalist></td></tr>
-      <tr><th className="tall">진도</th><td className="body"><textarea value={v.content} placeholder="예: 3단원 2차시 분수의 덧셈" onChange={(e) => set({ ...v, content: e.target.value })} /></td></tr>
-    </tbody></table>
-  );
-  const [edit, setEdit] = useState(fr ? { date: fr.date, subject: fr.subject, content: fr.content } : null);
+/* 수업진도: 학년도의 1학기 / 2학기 각각에 진도표 사진 한 장 */
+export function Progress({ db, uid, load }) {
+  const n = new Date();
+  const [sy, setSy] = useState(n.getMonth() < 2 ? n.getFullYear() - 1 : n.getFullYear());
+  const [term, setTerm] = useState(n.getMonth() + 1 >= 3 && n.getMonth() + 1 <= 7 ? 1 : 2);
+  const [kind, setKind] = useState('progress');
+  const KN = kind === 'progress' ? '수업진도' : '수행계획표';
+  const row = (db.progress_photos ?? []).find((r) => r.kind === kind && r.year === sy && r.term === term);
+  const [busy, setBusy] = useState(false);
+  const fail = (m) => alert(/progress_photos/.test(m) ? '사진을 저장할 곳이 아직 없습니다. Supabase SQL Editor에서 migrate.sql을 한 번 실행해 주세요.' : m);
+  const upload = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const photo = await resizePhoto(file, 1800, 700000);
+      const { error } = await sb.from('progress_photos').upsert({ user_id: uid, kind, year: sy, term, photo }, { onConflict: 'user_id,kind,year,term' });
+      if (error) return fail(error.message);
+      saved(); load();
+    } catch (e) { fail(e.message); } finally { setBusy(false); }
+  };
+  // 캡처한 화면을 Ctrl+V로 붙여넣기, 파일을 끌어다 놓기
+  useEffect(() => {
+    const onPaste = (e) => { const f = [...(e.clipboardData?.files ?? [])].find((x) => x.type.startsWith('image/')); if (f) { e.preventDefault(); upload(f); } };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  });
+  const remove = async () => {
+    if (!confirm(`${sy}학년도 ${term}학기 ${KN} 사진을 삭제할까요?`)) return;
+    const { error } = await sb.from('progress_photos').delete().eq('id', row.id);
+    if (error) return fail(error.message);
+    saved(); load();
+  };
   return (
     <>
       <div className="numtabs">
-        {MONTHS.map((n) => <button key={n} className={n === mo ? 'on' : ''} onClick={() => pickMonth(n)}>{n}</button>)}
+        {[['progress', '수업진도'], ['plan', '수행계획표']].map(([k, n]) => <button key={k} className={k === kind ? 'on' : ''} onClick={() => setKind(k)}>{n}</button>)}
+        <span style={{ width: 16 }} />
+        <button onClick={() => setSy(sy - 1)} title="이전 학년도">‹</button>
+        <b style={{ padding: '0 10px', alignSelf: 'center' }}>{sy}학년도</b>
+        <button onClick={() => setSy(sy + 1)} title="다음 학년도">›</button>
+        <span style={{ width: 16 }} />
+        {[1, 2].map((t) => <button key={t} className={t === term ? 'on' : ''} onClick={() => setTerm(t)}>{t}학기</button>)}
       </div>
-      <div className="two split">
-        <div>
-          <table><tbody>
-            <tr><th style={{ width: 70 }}>날짜</th><th style={{ width: 70 }}>과목</th><th>진도</th></tr>
-            {rows.map((p) => (
-              <tr key={p.id} className={`pickrow ${p.id === sel ? 'on' : ''} ${p.date === today() ? 'tdr' : ''}`} onClick={() => { setSel(p.id); setEdit({ date: p.date, subject: p.subject, content: p.content }); }}>
-                <td className="c">{p.date.slice(5).replace('-', '/')}</td><td className="c">{p.subject}</td><td>{p.content}</td>
-              </tr>
-            ))}
-            {rows.length === 0 && <tr><td colSpan="3" style={{ textAlign: 'center', color: 'var(--mute)', padding: 20 }}>{mo}월 기록이 없습니다.</td></tr>}
-          </tbody></table>
-          <button style={{ marginTop: 10 }} onClick={() => setSel(null)}>+ 새 진도 쓰기</button>
+      <div className="progphoto" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { const f = [...e.dataTransfer.files].find((x) => x.type.startsWith('image/')); if (f) { e.preventDefault(); upload(f); } }}>
+        {row ? <img src={row.photo} alt={`${sy}학년도 ${term}학기 ${KN}`} /> : <div className="progempty">{sy}학년도 {term}학기 {KN} 사진을 올려 주세요.<br />캡처한 화면을 Ctrl+V로 붙여넣거나 끌어다 놓아도 됩니다.</div>}
+        <div className="actions">
+          {row && <button type="button" className="danger" onClick={remove}>사진 삭제</button>}
+          <label className="filebtn">{busy ? '올리는 중…' : row ? '사진 바꾸기' : '사진 올리기'}
+            <input type="file" accept="image/*" hidden disabled={busy} onChange={(e) => { upload(e.target.files[0]); e.target.value = ''; }} />
+          </label>
         </div>
-        {cur && edit ? (
-          <form key={cur.id} onSubmit={(e) => { e.preventDefault(); upd('progress', cur.id, edit); }}>
-            {fields(edit, setEdit)}
-            <div className="actions">
-              <button type="button" className="danger" onClick={() => { del('progress', cur.id, `${cur.date.slice(5)} ${cur.subject ?? ''} 진도 기록을 삭제할까요?`); setSel(null); }}>삭제</button>
-              <button>수정 저장</button>
-            </div>
-          </form>
-        ) : (
-          <form onSubmit={(e) => { e.preventDefault(); if (f.content.trim()) { add('progress', f); setF({ ...f, content: '' }); } }}>
-            {fields(f, setF)}
-            <button>저장</button>
-          </form>
-        )}
       </div>
     </>
   );
@@ -448,35 +427,37 @@ export function Meetings({ db, add, del, upd, focus }) {
 
 /* 학급명렬 */
 export function Roster({ S, add, del, upd, load }) {
+  const [selId, setSelId] = useState(null); // 칸을 눌러 고치는 중인 학생 = 선택된 줄
+  const picked = S.find((s) => s.id === selId);
   const importXlsx = async (file) => {
     if (!file) return;
     const rows = await readTable(file);
     // 첫 줄에 '이름'이 있으면 머리글로 보고 열 위치를 찾고, 없으면 번호·이름·학생연락처·학부모연락처 순서로 간주
-    const h = rows[0]?.findIndex((c) => c.includes('이름')) >= 0 ? rows.shift() : ['번호', '이름', '학생', '학부모'];
+    const h = rows[0]?.findIndex((c) => c.includes('이름')) >= 0 ? rows.shift() : ['번호', '이름', '학생', '학부모1', '학부모2'];
     const col = (k) => h.findIndex((c) => c.includes(k));
-    const [ci, cn, cp, cq] = [col('번호'), col('이름'), col('학생'), col('학부모')];
+    const [ci, cn, cp, cq, cr] = [col('번호'), col('이름'), col('학생'), col('학부모1') >= 0 ? col('학부모1') : col('학부모'), col('학부모2')];
     let fi = 0;
     const free = nextFree(rows.length);
-    const list = rows.filter((r) => r[cn]).map((r) => ({ num: +r[ci] || free[fi++], name: r[cn], phone: r[cp] || null, parent_phone: r[cq] || null }));
+    const list = rows.filter((r) => r[cn]).map((r) => ({ num: +r[ci] || free[fi++], name: r[cn], phone: r[cp] || null, parent_phone: r[cq] || null, parent_phone2: r[cr] || null }));
     if (list.length && confirm(`${list.length}명을 등록할까요?`)) add('students', list);
   };
-  // 학급명렬 번호 칸: 왼쪽은 1~15번, 오른쪽은 50번부터. 그 밖의 번호(16~49, 65~)도 있으면 해당 칸 아래에 이어서 보인다.
+  // 학급명렬 번호 칸: 왼쪽 1~15번, 오른쪽 51~65번. 16~50번, 66번 이상도 있으면 해당 칸 아래에 이어서 보인다.
   const sorted = [...S].sort((a, b) => (a.num ?? 1e9) - (b.num ?? 1e9));
   const used = new Set(sorted.map((s) => s.num).filter(Boolean));
   const byNum = Object.fromEntries(sorted.filter((s) => s.num).map((s) => [s.num, s]));
   const nextFree = (k) => {
     const out = [];
-    for (const c of [...Array.from({ length: 15 }, (_, i) => i + 1), ...Array.from({ length: 300 }, (_, i) => 50 + i)]) {
+    for (const c of [...Array.from({ length: 15 }, (_, i) => i + 1), ...Array.from({ length: 300 }, (_, i) => 51 + i)]) {
       if (!used.has(c)) { out.push(c); if (out.length === k) break; }
     }
     return out;
   };
-  const column = (slots, extra, loose) => {
+  const column = (slots, extra, loose, blank) => {
     const nums = [...new Set([...slots, ...extra])].sort((a, b) => a - b);
     const last = nums[nums.length - 1];
     const rows = nums.map((n) => (byNum[n] ? { s: byNum[n] } : { n }));
     loose.forEach((s) => rows.push({ s }));
-    [1, 2].forEach((k) => { if (loose.length === 0 && (last + k < 50 || last >= 50)) rows.push({ n: last + k }); });
+    if (blank) [1, 2].forEach((k) => rows.push({ n: last + k }));
     return rows;
   };
   const clearAll = async () => {
@@ -485,14 +466,14 @@ export function Roster({ S, add, del, upd, load }) {
     const { error } = await sb.from('students').delete().in('id', S.map((x) => x.id));
     if (error) alert(error.message); else { await load(); saved(); }
   };
-  const colA = column(Array.from({ length: 15 }, (_, i) => i + 1), sorted.filter((s) => s.num > 15 && s.num < 50).map((s) => s.num), sorted.filter((s) => !s.num));
-  const colB = column(Array.from({ length: 15 }, (_, i) => 50 + i), sorted.filter((s) => s.num >= 65).map((s) => s.num), []);
+  const colA = column(Array.from({ length: 15 }, (_, i) => i + 1), sorted.filter((s) => s.num > 15 && s.num < 51).map((s) => s.num), sorted.filter((s) => !s.num), false);
+  const colB = column(Array.from({ length: 15 }, (_, i) => 51 + i), sorted.filter((s) => s.num > 65).map((s) => s.num), [], true);
   const addRow = (e) => {
     const tr = e.target.closest('tr');
     if (e.relatedTarget && tr.contains(e.relatedTarget)) return; // 같은 줄 안에서 옮겨 가는 중이면 아직 저장하지 않음
     const g = (f) => tr.querySelector(`[data-f="${f}"]`)?.value.trim() ?? '';
-    const num = +g('num'), name = g('name'), phone = g('phone'), pp = g('parent_phone');
-    if (num && (name || phone || pp)) add('students', { num, name, phone: phone || null, parent_phone: pp || null });
+    const num = +g('num'), name = g('name'), phone = g('phone'), pp = g('parent_phone'), pp2 = g('parent_phone2');
+    if (num && (name || phone || pp || pp2)) add('students', { num, name, phone: phone || null, parent_phone: pp || null, parent_phone2: pp2 || null });
   };
   const field = (s, k, n) => (
     <td className="c"><input data-f={k} key={s ? s[k] : `${k}${n}`} defaultValue={s?.[k] ?? ''}
@@ -513,26 +494,26 @@ export function Roster({ S, add, del, upd, load }) {
       <div className="toolbar">
         <label className="btn primary"><Upload size={16} /> 엑셀·CSV로 학생 올리기<input type="file" accept=".xlsx,.csv" onChange={(e) => { importXlsx(e.target.files[0]); e.target.value = ''; }} /></label>
         <a className="btn" href="/samples/sample-roster.xlsx" download="샘플_학생명단.xlsx"><Download size={16} /> 샘플 파일 받기</a>
-        <span className="hint">열 순서: 번호 · 이름 · 학생 연락처 · 학부모 연락처 (첫 줄은 머리글)</span>
+        <span className="hint">열 순서: 번호 · 이름 · 학생 연락처 · 학부모 연락처1 · 학부모 연락처2 (첫 줄은 머리글)</span>
       </div>
-      <div className="two">
+      <div className="two rostertwo">
         {[colA, colB].map((part, k) => (
           <table key={k}><tbody>
-            <tr><th style={{ width: 62 }}>번호</th><th>이름</th><th>학생 연락처</th><th>학부모 연락처</th></tr>
+            <tr><th style={{ width: 62 }}>번호</th><th>이름</th><th>학생 연락처</th><th>학부모 연락처1</th><th>학부모 연락처2</th></tr>
             {part.map(({ s, n }) => (
-              <tr key={s ? s.id : `b${n}`}>
+              <tr key={s ? s.id : `b${n}`} className={s && s.id === selId ? 'pickd' : ''} onFocus={() => setSelId(s ? s.id : null)}>
                 <td className="c"><input type="number" data-f="num" key={s ? s.num : `n${n}`} defaultValue={s ? s.num ?? '' : n}
                   onBlur={(e) => { if (!s) return addRow(e); if (+e.target.value && +e.target.value !== s.num) upd('students', s.id, { num: +e.target.value }); }} /></td>
-                {field(s, 'name', n)}{field(s, 'phone', n)}{field(s, 'parent_phone', n)}
+                {field(s, 'name', n)}{field(s, 'phone', n)}{field(s, 'parent_phone', n)}{field(s, 'parent_phone2', n)}
               </tr>
             ))}
           </tbody></table>
         ))}
       </div>
-      <details style={{ marginTop: 10 }}><summary style={{ cursor: 'pointer', color: 'var(--mute)' }}>학생 삭제</summary>
-        <button type="button" className="danger" style={{ margin: '8px 0' }} onClick={clearAll}>학생 전체 삭제</button><br />
-        {S.map((s, i) => <button key={s.id} className="x" onClick={() => del('students', s.id, `${numOf(s, i)}번 ${s.name} 학생을 삭제할까요?` + NLX + '이 학생의 성적·체크·상담 기록도 모두 함께 지워집니다.')}>{numOf(s, i)}번 {s.name} 삭제</button>)}
-      </details>
+      <div className="actions" style={{ marginTop: 10, justifyContent: 'flex-end' }}>
+        <button type="button" className="danger" disabled={!picked} onClick={() => { del('students', picked.id, `${picked.num ?? ''}번 ${picked.name} 학생을 삭제할까요?` + NLX + '이 학생의 성적·체크·상담 기록도 모두 함께 지워집니다.'); setSelId(null); }}>{picked ? `${picked.num ?? ''}번 ${picked.name} 삭제` : '학생 삭제 (줄을 먼저 클릭)'}</button>
+        <button type="button" className="danger" onClick={clearAll}>학생 전체 삭제</button>
+      </div>
     </>
   );
 }
@@ -762,17 +743,11 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
     setExtra((e) => [...e.filter((x) => x !== cur && x !== n), ...(hasSaved ? [] : [n])]);
     setSub(n);
   };
-  // 학년도 월 탭(3~2): 시험은 매달 있으므로 달별로 모아 본다
-  const now = new Date();
-  const sy = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();
-  const MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
-  const [mo, setMo] = useState(now.getMonth() + 1);
-  const monthKey = (m) => `${m >= 3 ? sy : sy + 1}-${String(m).padStart(2, '0')}`;
+  // 과목별로 그 과목의 모든 평가를 날짜순으로 보여 준다
   const tDate = (t) => t.date ?? t.created_at?.slice(0, 10) ?? '';
-  const inMonth = (t, m) => tDate(t).startsWith(monthKey(m));
-  const hasTests = (m) => db.tests.some((t) => t.subject === cur && inMonth(t, m));
-  const tests = db.tests.filter((t) => t.subject === cur && inMonth(t, mo)).sort((a, b) => tDate(a).localeCompare(tDate(b)));
-  const newDate = mo === now.getMonth() + 1 ? today() : monthKey(mo) + '-01';
+  // 날짜순으로 보여 준다
+  const tests = db.tests.filter((t) => t.subject === cur).sort((a, b) => tDate(a).localeCompare(tDate(b)));
+  const newDate = today();
   const row = (tid, sid) => db.scores.find((x) => x.test_id === tid && x.student_id === sid);
   const text = (tid, sid) => { const r = row(tid, sid); return r?.mark ?? (r?.score ?? ''); };
   const cls = (tid, sid) => {
@@ -855,7 +830,7 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
       if (out.length) { const res = await sb.from('scores').upsert(out); if (res.error) return alert(res.error.message); }
       report.push(sh.sheet + ': 평가 ' + cols.length + '개, 점수 ' + out.length + '개' + (miss ? ' (학생 못 찾음 ' + miss + '줄)' : '') + (bad ? ' (숫자·결석이 아니라 건너뜀 ' + bad + '칸)' : ''));
     }
-    await load(); saved(); setSub(usable[0].sheet); setMo(+date.slice(5, 7));
+    await load(); saved(); setSub(usable[0].sheet);
     alert(['저장했습니다.', '', ...report].join(NL));
   };
   // 양식 받기: 우리 반 학생(번호·이름)이 미리 들어 있고, 있는 점수도 함께 담긴 엑셀. 채워서 다시 올리면 된다
@@ -865,7 +840,7 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
     const subs = subjects.length ? subjects : ['받아쓰기'];
     const head = (v) => ({ value: v, fontWeight: 'bold', backgroundColor: '#eef0f7', align: 'center' });
     const sheets = subs.map((sj) => {
-      const ts = db.tests.filter((t) => t.subject === sj && inMonth(t, mo)).sort((a, b) => tDate(a).localeCompare(tDate(b)));
+      const ts = db.tests.filter((t) => t.subject === sj).sort((a, b) => tDate(a).localeCompare(tDate(b)));
       const spare = ts.length ? 2 : 3;
       const heads = [...ts.map((t) => t.name), ...Array.from({ length: spare }, (_, i) => (ts.length ? '' : '평가' + (i + 1)))];
       const data = [[head('번호'), head('이름'), ...heads.map((h) => head(h))]];
@@ -887,9 +862,6 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
   };
   return (
     <>
-      <div className="numtabs months">
-        {MONTHS.map((n) => <button key={n} className={`${n === mo ? 'on' : ''} ${hasTests(n) ? 'has' : ''}`} onClick={() => setMo(n)}>{n}</button>)}
-      </div>
       <div className="numtabs sheets">
         {subjects.map((n) => (n === cur && editSub
           ? <input key={n} autoFocus className="subedit" defaultValue={n} onFocus={(e) => e.target.select()}
@@ -906,7 +878,6 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
         if (!d.name?.trim()) { alert('평가 이름을 입력하세요. (예: 1급, 단원평가1)'); f.elements.name.focus(); return; }
         add('tests', { subject: d.subject.trim(), name: d.name.trim(), date: d.date || null });
         setSub(d.subject.trim());
-        if (d.date) setMo(+d.date.slice(5, 7)); // 다른 달 날짜로 추가해도 그 달 탭으로 이동해서 바로 보이게
         f.elements.name.value = '';
       }}>
         <div className="gfields">
@@ -927,7 +898,7 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
       </div>
       {S.length === 0 ? <p>먼저 학급명렬에서 학생을 추가하세요.</p> : (
         <>
-        {!db.tests.some((t) => t.subject === cur) ? <p style={{ color: 'var(--mute)' }}>「{cur}」 과목을 만들었습니다. 위쪽에서 <b>평가 이름</b>을 쓰고 <b>평가(열) 추가</b>를 누르면 이 표에 열이 생깁니다.</p> : tests.length === 0 ? <p style={{ color: 'var(--mute)' }}>{mo}월에는 「{cur}」 평가가 없습니다. 위쪽에서 <b>평가(열) 추가</b>로 열을 만들거나 다른 달을 눌러 보세요.</p> : null}
+        {!db.tests.some((t) => t.subject === cur) ? <p style={{ color: 'var(--mute)' }}>「{cur}」 과목을 만들었습니다. 위쪽에서 <b>평가 이름</b>을 쓰고 <b>평가(열) 추가</b>를 누르면 이 표에 열이 생깁니다.</p> : null}
         <div className="gradewrap">
           <table className="grades"><tbody>
             <tr><th style={{ width: 54 }}>번호</th><th style={{ width: 90 }}>이름</th>
@@ -953,6 +924,31 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
 }
 
 
+/* 간단한 꺾은선 그래프(SVG): series[].pts 는 평가 순서대로의 값(없으면 null). invert면 작은 값이 위(등수) */
+function LineChart({ labels, series, min, max, invert, unit = '' }) {
+  const W = 620, H = 170, pl = 38, pr = 14, pt = 18, pb = 34;
+  const n = labels.length;
+  const X = (i) => (n > 1 ? pl + (i * (W - pl - pr)) / (n - 1) : (pl + W - pr) / 2);
+  const Y = (val) => { const k = (val - min) / (max - min || 1); return pt + (invert ? k : 1 - k) * (H - pt - pb); };
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="linechart" role="img">
+      {[min, max].map((t) => <g key={t}><line x1={pl} x2={W - pr} y1={Y(t)} y2={Y(t)} stroke="#e3e5ef" /><text x={pl - 6} y={Y(t) + 4} textAnchor="end" fontSize="11" fill="#8a8da3">{t}{unit}</text></g>)}
+      {labels.map((l, i) => <text key={i} x={X(i)} y={H - 12} textAnchor="middle" fontSize="11" fill="#8a8da3">{l.length > 6 ? l.slice(0, 6) + '…' : l}</text>)}
+      {series.map((s, si) => {
+        const segs = []; let cur = [];
+        s.pts.forEach((val, i) => { if (val === null || val === undefined) { if (cur.length) segs.push(cur); cur = []; } else cur.push([X(i), Y(val)]); });
+        if (cur.length) segs.push(cur);
+        return (
+          <g key={si}>
+            {segs.map((sg, k) => sg.length > 1 && <polyline key={k} points={sg.map((q) => q.join(',')).join(' ')} fill="none" stroke={s.color} strokeWidth="2" strokeDasharray={s.dashed ? '5 4' : undefined} />)}
+            {!s.dashed && s.pts.map((val, i) => val !== null && val !== undefined && <g key={i}><circle cx={X(i)} cy={Y(val)} r="4" fill={s.color} /><text x={X(i)} y={Y(val) - 9} textAnchor="middle" fontSize="11" fill="#444">{Math.round(val * 10) / 10}{unit}</text></g>)}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 /* 성적 통계: 과목 + 월(또는 전체)을 골라 자동으로 집계. 평균·분포·학생별 점수와 등수 */
 export function Stats({ db, S }) {
   const subjects = [...new Set(db.tests.map((t) => t.subject).filter(Boolean))];
@@ -961,7 +957,12 @@ export function Stats({ db, S }) {
   const now = new Date();
   const sy = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();
   const MONTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2];
-  const [mo, setMo] = useState('all');
+  const mo = 'all'; // 월 탭은 없애고 과목별 전체를 본다
+  // 확인이 필요한 학생 기준 점수(이 브라우저에 기억)
+  const [thr, setThr] = useState(() => { try { const x = +localStorage.getItem('thr'); return x > 0 ? x : 80; } catch { return 80; } });
+  const setThrSave = (n) => { setThr(n); try { localStorage.setItem('thr', String(n)); } catch {} };
+  const [pid, setPid] = useState('');
+  const [mode, setMode] = useState('class'); // 'class' 학급 통계 | 'person' 개인별 통계
   const [order, setOrder] = useState('num');
   const monthKey = (m) => `${m >= 3 ? sy : sy + 1}-${String(m).padStart(2, '0')}`;
   const tDate = (t) => t.date ?? t.created_at?.slice(0, 10) ?? '';
@@ -1005,7 +1006,7 @@ export function Stats({ db, S }) {
   const ranked = stu.filter((x) => x.avg !== null);
   const rankAvg = rankMap(ranked.map((x) => ({ id: x.st.id, v: Math.round(x.avg * 100) / 100 })));
   const rows = [...stu].sort((a, b) => (order === 'rank' ? (rankAvg[a.st.id] ?? 1e9) - (rankAvg[b.st.id] ?? 1e9) || a.n - b.n : a.n - b.n));
-  const need = ranked.filter((x) => x.avg < 80);
+  const need = ranked.filter((x) => x.avg < thr);
   const top = [...ranked].sort((a, b) => rankAvg[a.st.id] - rankAvg[b.st.id] || a.n - b.n).slice(0, 3);
   const classAvg = avgOf(ranked.map((x) => x.avg));
 
@@ -1020,16 +1021,17 @@ export function Stats({ db, S }) {
   if (!subjects.length) return <p style={{ color: 'var(--mute)' }}>아직 성적이 없습니다. <b>성적</b> 화면에서 평가를 추가하거나 파일을 올리면 여기에 자동으로 집계됩니다.</p>;
   return (
     <>
-      <div className="numtabs months">
-        <button className={mo === 'all' ? 'on' : ''} onClick={() => setMo('all')}>전체</button>
-        {MONTHS.map((n) => <button key={n} className={`${n === mo ? 'on' : ''} ${mine.some((t) => tDate(t).startsWith(monthKey(n))) ? 'has' : ''}`} onClick={() => setMo(n)}>{n}</button>)}
+      <div className="statmode">
+        <button className={mode === 'class' ? 'on' : ''} onClick={() => setMode('class')}>학급 통계</button>
+        <button className={mode === 'person' ? 'on' : ''} onClick={() => setMode('person')}>개인별 통계</button>
       </div>
       <div className="numtabs sheets">
         {subjects.map((n) => <button key={n} className={n === cur ? 'on' : ''} onClick={() => setSub(n)}>{n}</button>)}
       </div>
 
-      {tests.length === 0 ? <p style={{ color: 'var(--mute)' }}>{mo === 'all' ? '' : mo + '월에는 '}「{cur}」 평가가 없습니다. 다른 달이나 과목을 눌러 보세요.</p> : (
+      {tests.length === 0 ? <p style={{ color: 'var(--mute)' }}>「{cur}」 평가가 없습니다. 다른 과목을 눌러 보세요.</p> : (
         <>
+          {mode === 'class' && <>
           <div className="statcards">
             <div><small>평가</small><b>{tests.length}개</b></div>
             <div><small>전체 평균 (점수 기준)</small><b>{f2(avgOf(all))}</b></div>
@@ -1075,11 +1077,22 @@ export function Stats({ db, S }) {
               <h3>평균 상위 3명</h3>
               <div className="chips">{top.length ? top.map((x) => <span key={x.st.id} className="chip good">{rankAvg[x.st.id]}위 · {x.n}번 {x.st.name} · {f2(x.avg)}</span>) : <span className="hint">점수가 없습니다</span>}</div>
             </div>
-            <div>
-              <h3>확인이 필요한 학생 (평균 80 미만)</h3>
-              <div className="chips">{need.length ? need.map((x) => <span key={x.st.id} className="chip warn">{x.n}번 {x.st.name} · {f2(x.avg)}</span>) : <span className="hint">없습니다</span>}</div>
-            </div>
           </div>
+
+          <h3>확인이 필요한 학생 (평균 <input type="number" min="0" max="100" className="thrin" value={thr} onChange={(e) => setThrSave(+e.target.value || 0)} /> 미만) <small style={{ color: 'var(--mute)', fontWeight: 400 }}>— 기준 점수를 바꾸면 바로 바뀝니다</small></h3>
+          {need.length ? (
+            <div className="gradewrap">
+              <table className="stattable"><tbody>
+                <tr><th style={{ width: 46 }}>번호</th><th style={{ width: 80 }}>이름</th><th>평균</th>{per.map((x) => <th key={x.t.id}>{x.t.name}<br /><small>{tDate(x.t).slice(5).replace('-', '/')}</small></th>)}</tr>
+                {[...need].sort((a, b) => a.avg - b.avg).map((x) => (
+                  <tr key={x.st.id}>
+                    <td className="c">{x.n}</td><td className="c">{x.st.name}</td><td className="c lo"><b>{f2(x.avg)}</b></td>
+                    {per.map((p) => { const r0 = sc[p.t.id + '|' + x.st.id]; return <td key={p.t.id} className={`c ${isNum(r0) && +r0.score < thr ? 'lo' : ''}`}>{isNum(r0) ? f0(+r0.score) : r0?.mark || '-'}</td>; })}
+                  </tr>
+                ))}
+              </tbody></table>
+            </div>
+          ) : <p className="hint">평균 {thr}점 미만인 학생이 없습니다.</p>}
 
           <h3>학생별 점수와 등수
             <span className="seg">
@@ -1104,7 +1117,7 @@ export function Stats({ db, S }) {
                       if (isNum(r)) return <td key={p.t.id} className={`c ${+r.score >= 100 ? 'hi' : +r.score < 90 ? 'lo' : ''}`}>{f0(+r.score)} <sup>{p.rk[x.st.id]}</sup></td>;
                       return <td key={p.t.id} className={`c ${r?.mark ? 'lo' : ''}`}>{r?.mark || '-'}</td>;
                     })}
-                    <td className={`c ${x.avg !== null && x.avg < 80 ? 'lo' : x.avg >= 100 ? 'hi' : ''}`}><b>{f2(x.avg)}</b></td>
+                    <td className={`c ${x.avg !== null && x.avg < thr ? 'lo' : x.avg >= 100 ? 'hi' : ''}`}><b>{f2(x.avg)}</b></td>
                     <td className={`c rank ${rk && rk <= 3 ? 'top' : ''}`}>{rk ? rk + '위' : '-'}<small>{rk ? ' / ' + ranked.length : ''}</small></td>
                     <td className={`c ${x.delta > 0 ? 'hi' : x.delta < 0 ? 'lo' : ''}`}>{x.delta === null ? '-' : (x.delta > 0 ? '▲ ' : x.delta < 0 ? '▼ ' : '') + f0(Math.abs(x.delta))}</td>
                     <td className="c">{x.abs || '-'}</td>
@@ -1113,6 +1126,89 @@ export function Stats({ db, S }) {
               })}
             </tbody></table>
           </div>
+
+          </>}
+
+          {mode === 'person' && (() => {
+            const me = S.find((s) => s.id === pid) ?? S[0];
+            if (!me) return null;
+            const mi = S.indexOf(me), my = stu[mi];
+            const myRank = rankAvg[me.id];
+            const diff = my.avg !== null && classAvg !== null ? my.avg - classAvg : null;
+            // 모든 과목 요약
+            const bySub = subjects.map((sj) => {
+              const ts = db.tests.filter((t) => t.subject === sj);
+              const avgFor = (st) => avgOf(ts.map((t) => sc[t.id + '|' + st.id]).filter(isNum).map((x) => +x.score));
+              const mine2 = avgFor(me);
+              const allAvg = S.map(avgFor).filter((a) => a !== null);
+              const rm = rankMap(S.map((st) => ({ id: st.id, v: avgFor(st) })).filter((x) => x.v !== null).map((x) => ({ id: x.id, v: Math.round(x.v * 100) / 100 })));
+              return { sj, mine: mine2, cls: avgOf(allAvg), rk: rm[me.id], n: allAvg.length };
+            });
+            return (
+              <>
+                <h3 className="bigtitle">개인별 통계
+                  <select className="pidsel" value={me.id} onChange={(e) => setPid(e.target.value)}>
+                    {S.map((s, i) => <option key={s.id} value={s.id}>{numOf(s, i)}번 {s.name}</option>)}
+                  </select>
+                </h3>
+                <div className="statcards">
+                  <div><small>「{cur}」 평균</small><b className={my.avg !== null && my.avg < thr ? 'lo' : ''}>{f2(my.avg)}</b></div>
+                  <div><small>등수</small><b>{myRank ? myRank + '위 / ' + ranked.length : '-'}</b></div>
+                  <div><small>학급 평균과 차이</small><b className={diff > 0 ? 'hi' : diff < 0 ? 'lo' : ''}>{diff === null ? '-' : (diff > 0 ? '▲ ' : diff < 0 ? '▼ ' : '') + f2(Math.abs(diff))}</b></div>
+                  <div><small>응시 / 결석</small><b>{my.cnt}회 / {my.abs}회</b></div>
+                </div>
+                {(() => {
+                  const labels = per.map((x) => x.t.name);
+                  const sPts = per.map((x) => { const r0 = sc[x.t.id + '|' + me.id]; return isNum(r0) ? +r0.score : null; });
+                  const cPts = per.map((x) => x.avg);
+                  const vals = [...sPts, ...cPts].filter((q) => q !== null);
+                  const rPts = per.map((x) => x.rk[me.id] ?? null);
+                  if (!vals.length) return null;
+                  const lo = Math.max(0, Math.floor((Math.min(...vals) - 5) / 10) * 10), hi = Math.max(lo + 10, Math.ceil(Math.max(...vals) / 10) * 10);
+                  const nmax = Math.max(2, ...per.map((x) => Object.keys(x.rk).length));
+                  return (
+                    <div className="bigcharts">
+                      <div><h3>성적 추이 <small style={{ fontWeight: 400, color: 'var(--mute)' }}>● {me.name} &nbsp;┅ 학급 평균</small></h3>
+                        <LineChart labels={labels} min={lo} max={hi} series={[{ pts: cPts, color: '#b7bad0', dashed: true }, { pts: sPts, color: '#6f78c9' }]} /></div>
+                      <div><h3>등수 추이 <small style={{ fontWeight: 400, color: 'var(--mute)' }}>위쪽일수록 높은 등수</small></h3>
+                        <LineChart labels={labels} min={1} max={nmax} invert unit="위" series={[{ pts: rPts, color: '#e0883f' }]} /></div>
+                    </div>
+                  );
+                })()}
+                <div className="gradewrap">
+                  <table className="stattable"><tbody>
+                    <tr><th>평가</th><th>날짜</th><th>점수</th><th>학급 평균</th><th>차이</th><th>등수</th></tr>
+                    {per.map((x) => {
+                      const r0 = sc[x.t.id + '|' + me.id];
+                      const d = isNum(r0) && x.avg !== null ? +r0.score - x.avg : null;
+                      return (
+                        <tr key={x.t.id}>
+                          <td className="c"><b>{x.t.name}</b></td><td className="c">{tDate(x.t).slice(5).replace('-', '/')}</td>
+                          <td className={`c ${isNum(r0) && +r0.score < thr ? 'lo' : ''}`}>{isNum(r0) ? f0(+r0.score) : r0?.mark || '-'}</td>
+                          <td className="c">{f2(x.avg)}</td>
+                          <td className={`c ${d > 0 ? 'hi' : d < 0 ? 'lo' : ''}`}>{d === null ? '-' : (d > 0 ? '▲ ' : d < 0 ? '▼ ' : '') + f2(Math.abs(d))}</td>
+                          <td className="c">{x.rk[me.id] ? x.rk[me.id] + '위' : '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody></table>
+                </div>
+                {subjects.length > 1 && (
+                  <>
+                    <h3>과목별 평균</h3>
+                    <div className="gradewrap">
+                      <table className="stattable"><tbody>
+                        <tr><th>과목</th><th>{me.name} 평균</th><th>학급 평균</th><th>등수</th></tr>
+                        {bySub.map((b) => (
+                          <tr key={b.sj}><td className="c"><b>{b.sj}</b></td><td className={`c ${b.mine !== null && b.mine < thr ? 'lo' : ''}`}>{f2(b.mine)}</td><td className="c">{f2(b.cls)}</td><td className="c">{b.rk ? b.rk + '위 / ' + b.n : '-'}</td></tr>
+                        ))}
+                      </tbody></table>
+                    </div>
+                  </>
+                )}
+              </>
+            );
+          })()}
         </>
       )}
     </>

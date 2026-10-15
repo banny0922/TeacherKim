@@ -3,7 +3,7 @@
 -- drop table if exists checks, checklists, scores, tests, notes, events, students, timetable, progress, meetings, memos, day_memos, period_notes cascade;
 
 create table students   (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
-  num int, name text not null default '', phone text, parent_phone text, photo text);
+  num int, name text not null default '', phone text, parent_phone text, parent_phone2 text, photo text);
 create table events     (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
   date date not null, title text not null);
 create table tests      (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
@@ -18,6 +18,7 @@ create table checklists (id uuid primary key default gen_random_uuid(), user_id 
   title text not null default '', date date);
 create table checks     (checklist_id uuid references checklists on delete cascade, student_id uuid references students on delete cascade, user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
   primary key (checklist_id, student_id));
+create table progress_photos (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(), kind text not null default 'progress', year int not null, term int not null, photo text, unique (user_id, kind, year, term));
 create table progress   (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
   date date not null, subject text, content text not null);
 create table meetings   (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
@@ -36,7 +37,7 @@ create table memos      (id uuid primary key default gen_random_uuid(), user_id 
   title text, content text not null, date date);
 
 do $$ declare t text; begin
-  foreach t in array array['students','events','tests','scores','notes','timetable','checklists','checks','progress','meetings','memos','day_memos','period_notes','tt_changes'] loop
+  foreach t in array array['students','events','tests','scores','notes','timetable','checklists','checks','progress','meetings','memos','day_memos','period_notes','tt_changes','progress_photos'] loop
     execute format('alter table %I enable row level security', t);
     execute format('create policy "own rows" on %I for all using (user_id = auth.uid()) with check (user_id = auth.uid())', t);
   end loop;

@@ -6,7 +6,7 @@ import { Calendar, Timetable, Progress, Meetings, Roster, Checklists, Counsel, M
 
 const TABS = { calendar: '학사일정', timetable: '시간표', progress: '수업진도', meetings: '교무회의', roster: '학급명렬', checklist: '체크리스트', counsel: '상담기록', memo: '메모하기', grades: '성적', stats: '성적통계' };
 const LEGEND = [['calendar', '#f08fa0'], ['timetable', '#f4b183'], ['progress', '#f1d36b'], ['meetings', '#8fcf9a'], ['grades', '#6fc3c3'], ['stats', '#a3c46a'], ['roster', '#7fb2ea'], ['checklist', '#8c8cd8'], ['counsel', '#b58ad9'], ['memo', '#d98fc4']];
-const EMPTY = { students: [], events: [], tests: [], scores: [], notes: [], timetable: [], checklists: [], checks: [], progress: [], meetings: [], memos: [], day_memos: [], period_notes: [], tt_changes: [] };
+const EMPTY = { students: [], events: [], tests: [], scores: [], notes: [], timetable: [], checklists: [], checks: [], progress: [], meetings: [], memos: [], day_memos: [], period_notes: [], tt_changes: [], progress_photos: [] };
 
 function Login() {
   const [f, setF] = useState({ email: '', password: '' });
@@ -55,9 +55,9 @@ function Planner({ uid }) {
   const [err, setErr] = useState('');
   const load = async () => {
     const keys = Object.keys(EMPTY);
-    const r = await Promise.all(keys.map((t) => sb.from(t).select(t === 'students' ? 'id,user_id,created_at,num,name,phone,parent_phone' : '*').order('created_at')));
+    const r = await Promise.all(keys.map((t) => sb.from(t).select(t === 'students' ? 'id,user_id,created_at,num,name,phone,parent_phone,parent_phone2' : '*').order('created_at')));
     // tt_changes(그 날만 바뀐 시간표)는 SQL을 아직 안 돌렸어도 앱이 멈추지 않게 오류를 무시한다
-    const bad = r.find((x, i) => x.error && keys[i] !== 'tt_changes');
+    const bad = r.find((x, i) => x.error && keys[i] !== 'tt_changes' && keys[i] !== 'progress_photos');
     if (bad) return setErr(bad.error.message);
     setDb(Object.fromEntries(keys.map((t, i) => [t, r[i].data ?? []])));
   };

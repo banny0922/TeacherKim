@@ -532,3 +532,49 @@ table.week th.tdh{background:#e3ecff;color:#2f3f8f;font-weight:700}
 table.week th.tdh small{color:#5870b8}
 table.week td.tdc,table.week tr.evrow td.tdc{background:#f4f7ff}
 .tdr,.tdr td{background:#f3f7ff}
+
+/* 시간표 탭: 학급 시간표 하나만, 가로를 넉넉히 */
+.ttone{max-width:none}
+
+/* 시간표 탭: 표를 가로 전체로, 열 너비 같게 */
+.ttone table{width:100%;table-layout:fixed}
+.ttone table th:first-child{width:64px}
+.ttone td.tt,.ttone td.tt textarea{height:100px;min-height:100px}
+
+/* 수업진도: 사진 한 장 */
+.progphoto img{display:block;width:100%;border:1px solid var(--line);border-radius:10px}
+.progempty{padding:90px 20px;text-align:center;color:var(--mute);border:2px dashed var(--line);border-radius:10px}
+.progphoto .actions{margin-top:10px;justify-content:flex-end}
+.filebtn{display:inline-block;padding:7px 16px;border-radius:8px;background:var(--ac2,#7c83d6);color:#fff;cursor:pointer}
+
+/* 학급명렬: 두 줄로 나란히, 칸을 좁게 */
+.rostertwo{gap:12px}
+.rostertwo table{table-layout:fixed;width:100%}
+.rostertwo th:nth-child(1){width:46px!important}
+.rostertwo th:nth-child(2){width:76px}
+.rostertwo th{padding:6px 2px;font-size:12px}
+.rostertwo td input{padding:6px 4px;font-size:13px;text-align:center}
+.rostertwo th:nth-child(1){width:64px!important}
+.rostertwo td input[type=number]{-moz-appearance:textfield;appearance:textfield;padding:6px 0}
+.rostertwo td input[type=number]::-webkit-inner-spin-button,.rostertwo td input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+
+.rostertwo tr.pickd td{background:#fdeaea}
+.rostertwo tr.pickd input{background:transparent}
+.thrin{width:56px;padding:2px 6px;margin:0 2px;text-align:center;font:inherit}
+.pidsel{margin-left:10px;font:inherit;padding:2px 8px}
+.linechart{width:100%;height:auto;background:#fff;border:1px solid var(--line);border-radius:10px}
+
+/* 개인별 통계를 크게 */
+.bigcharts{display:grid;grid-template-columns:1fr;gap:6px}
+.bigcharts h3{font-size:17px}
+.bigcards b{font-size:26px}
+.bigcards small{font-size:13px}
+.bigtitle{font-size:26px!important;margin-top:28px}
+.bigtitle .pidsel{font-size:20px;padding:4px 12px;margin-left:14px}
+.bigcharts{grid-template-columns:1fr 1fr!important;gap:16px!important}
+@media(max-width:800px){.bigcharts{grid-template-columns:1fr!important}}
+
+/* 학급 통계 / 개인별 통계 전환 버튼 */
+.statmode{display:flex;gap:8px;margin:0 0 12px}
+.statmode button{padding:9px 22px;font-size:16px;font-weight:600;border-radius:999px;background:#fff;color:var(--ac2,#6f78c9);border:1px solid var(--line)}
+.statmode button.on{background:var(--ac2,#6f78c9);color:#fff;border-color:transparent}
