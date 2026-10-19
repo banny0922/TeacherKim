@@ -645,3 +645,14 @@ table.stattable td.notecell{text-align:left;font-size:13px;color:#555;padding:4p
 .gchoose .gcancel{align-items:center;border:0;background:transparent;color:var(--mute)}
 .gchoose .gname{display:flex;align-items:center;gap:8px;font-size:13px;color:#555}
 .gchoose .gname input{flex:1;min-width:0;margin:0}
+.gsync[disabled],.gsync2[disabled]{opacity:.6}
+
+/* 연간 캘린더: 일정이 있는 날은 빨간 점 */
+.rdot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#e03a3a;margin:1px}
+
+/* 월간 달력: 칸 크기 고정 (내용이 많아도 칸이 커지지 않는다) */
+.cal{grid-template-columns:repeat(7,minmax(0,1fr))}
+.cal>div{height:136px;min-height:136px;overflow:hidden}
+.cal>div.h{height:auto;min-height:0}
+.cal .ev{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal .ev span{overflow:hidden;text-overflow:ellipsis}

@@ -127,9 +127,11 @@ function GoogleCal({ db, load, email }) {
     const name = calName.trim() || '학급일지';
     const items = allItems();
     if (!items.length) return alert('보낼 기록이 없습니다. (달력에 적힌 일정·메모·체크리스트 등이 없습니다)');
-    const where = mode === 'primary' ? '내 기존(기본) 캘린더' : '새 「' + name + '」 캘린더(없으면 새로 만듦)';
+    const target = mode === 'primary' ? await pickOne(t, 'writer', '어느 캘린더에 추가할까요? (일정을 쓸 수 있는 캘린더만 보입니다)') : null;
+    if (mode === 'primary' && !target) return;
+    const where = mode === 'primary' ? '내 「' + target.summary + '」 캘린더' : '새 「' + name + '」 캘린더(없으면 새로 만듦)';
     if (!confirm(`달력에 적힌 기록 ${items.length}개를 ${where}에 보낼까요?` + NLX + (mode === 'primary' ? '기존 캘린더에 일정이 추가됩니다. 이미 보낸 일정은 고친 내용으로 바뀝니다.' : '기본 캘린더에는 들어가지 않고, 이미 보낸 일정은 고친 내용으로 바뀝니다.'))) return;
-    const cal = mode === 'primary' ? 'primary' : await ownCal(t, name);
+    const cal = mode === 'primary' ? target.id : await ownCal(t, name);
     const url = `${GBASE}/calendars/${encodeURIComponent(cal)}/events`;
     let ok = 0, bad = 0;
     for (const e of items) {
@@ -140,14 +142,56 @@ function GoogleCal({ db, load, email }) {
       if (r.status === 404) r = await call(t, url, { method: 'POST', body: JSON.stringify({ id, ...body }) });
       if (r.status >= 200 && r.status < 300) ok++; else bad++;
     }
-    alert(`${mode === 'primary' ? '내 기존 캘린더' : '구글 「' + name + '」 캘린더'}에 보냈습니다. 성공 ${ok}개${bad ? ', 실패 ' + bad + '개' : ''}`);
-  }, mode === 'primary' ? 'https://www.googleapis.com/auth/calendar.events' : 'https://www.googleapis.com/auth/calendar.app.created');
+    alert(`${mode === 'primary' ? '내 「' + target.summary + '」 캘린더' : '구글 「' + name + '」 캘린더'}에 보냈습니다. 성공 ${ok}개${bad ? ', 실패 ' + bad + '개' : ''}`);
+  }, mode === 'primary' ? 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly' : 'https://www.googleapis.com/auth/calendar.app.created');
+  // 구글 → 앱: 내 기본 캘린더의 이번 학년도 일정(이 앱에서 보낸 것 제외)을 학사일정으로 가져온다. 같은 날짜·제목은 건너뛴다
+  const pull = run('pull', async (t) => {
+    const n = new Date(), sy = n.getMonth() < 2 ? n.getFullYear() - 1 : n.getFullYear();
+    const q = new URLSearchParams({ timeMin: `${sy}-03-01T00:00:00+09:00`, timeMax: `${sy + 1}-03-01T00:00:00+09:00`, singleEvents: 'true', orderBy: 'startTime', maxResults: '500' });
+    const src = await pickOne(t, 'reader', '어느 캘린더에서 가져올까요?');
+    if (!src) return;
+    const r = await call(t, `${GBASE}/calendars/${encodeURIComponent(src.id)}/events?${q}`);
+    if (r.status !== 200) throw new Error('구글 일정을 불러오지 못했습니다. ' + (r.j.error?.message ?? ''));
+    const mine = new Set(allItems().map((e) => e.id));
+    const have = new Set(db.events.map((e) => e.date + '|' + e.title));
+    const rows = [];
+    for (const g of r.j.items ?? []) {
+      if (g.status === 'cancelled' || mine.has(g.id)) continue;
+      const date = g.start?.date ?? g.start?.dateTime?.slice(0, 10);
+      const title = (g.summary ?? '').trim();
+      if (!date || !title || have.has(date + '|' + title)) continue;
+      have.add(date + '|' + title); rows.push({ date, title });
+    }
+    if (!rows.length) return alert('새로 가져올 일정이 없습니다.');
+    if (!confirm(`${sy}학년도 구글 캘린더 일정 ${rows.length}개를 학사일정으로 가져올까요? (캘린더: ${src.summary})`)) return;
+    const { error } = await sb.from('events').insert(rows);
+    if (error) throw new Error(error.message);
+    await load(); saved();
+    alert(`학사일정으로 ${rows.length}개를 가져왔습니다.`);
+  }, 'https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly');
+  // 내 캘린더가 둘 이상이면 어느 것인지 고르게 한다 (하나뿐이면 기본 캘린더)
+  const [pickCal, setPickCal] = useState(null);
+  const pickOne = async (t, role, title) => {
+    const l = await call(t, `${GBASE}/users/me/calendarList?minAccessRole=${role}`);
+    if (l.status !== 200) alert('캘린더 목록을 불러오지 못해 기본 캘린더를 사용합니다.' + NLX + '(' + (l.j.error?.message ?? '오류 ' + l.status) + ')');
+    const items = l.status === 200 ? [...(l.j.items ?? [])].sort((a, b) => (b.primary ? 1 : 0) - (a.primary ? 1 : 0)) : [];
+    if (items.length < 2) return { id: 'primary', summary: '기본 캘린더' };
+    return new Promise((res) => setPickCal({ title, items, res }));
+  };
   const [choose, setChoose] = useState(false);
   const pick = (mode) => { if (mode === 'new') { try { localStorage.setItem('gcal_name', calName.trim() || '학급일지'); } catch {} } setChoose(false); sendTo(mode)(); };
   return (
     <>
       <input className="gacct" type="email" value={acct} placeholder="연동할 구글 계정 (예: abc@gmail.com)" onChange={(e) => setAcctSave(e.target.value)} />
       <button type="button" className="gsync" disabled={!!busy} onClick={() => setChoose(!choose)}>{busy === 'send' ? '보내는 중…' : '구글 캘린더로 보내기'}</button>
+      <button type="button" className="gsync2" disabled={!!busy} onClick={pull}>{busy === 'pull' ? '가져오는 중…' : '구글 캘린더에서 가져오기'}</button>
+      {pickCal && (
+        <div className="gchoose">
+          <b>{pickCal.title}</b>
+          {pickCal.items.map((c) => <button key={c.id} type="button" onClick={() => { pickCal.res({ id: c.id, summary: c.summaryOverride || c.summary }); setPickCal(null); }}><span>{c.summaryOverride || c.summary}{c.primary ? ' (기본)' : ''}</span></button>)}
+          <button type="button" className="gcancel" onClick={() => { pickCal.res(null); setPickCal(null); }}>취소</button>
+        </div>
+      )}
       {choose && (
         <div className="gchoose">
           <b>어디로 보낼까요?</b>
@@ -257,9 +301,10 @@ function MiniMonth({ db, year, k, onMonth, onWeek }) {
             if (!d) return <span key={i} />;
             const icons = [];
             dayItems(db, iso(d)).forEach((it) => { if (!icons.some((x) => x.Icon === it.Icon)) icons.push(it); });
+            icons.sort((x, y) => (y.Icon === CalendarDays ? 1 : 0) - (x.Icon === CalendarDays ? 1 : 0));
             return (
               <span key={i} title={holidayName(iso(d)) || ''} className={`${holidayName(iso(d)) || i === 6 ? 'sun' : i === 5 ? 'sat' : ''} ${iso(d) === t ? 'today' : ''}`}>{d}
-                {icons.length > 0 && <em className="mic">{icons.slice(0, 3).map(({ Icon, color }, j) => <Icon key={j} size={9} strokeWidth={2.6} color={color} />)}</em>}
+                {icons.length > 0 && <em className="mic">{icons.slice(0, 3).map(({ Icon, color }, j) => (Icon === CalendarDays ? <i key={j} className="rdot" /> : <Icon key={j} size={9} strokeWidth={2.6} color={color} />))}</em>}
               </span>
             );
           })}
