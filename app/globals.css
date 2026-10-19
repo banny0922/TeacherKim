@@ -661,3 +661,59 @@ table.stattable td.notecell{text-align:left;font-size:13px;color:#555;padding:4p
 .cal .ev.isev,.cal .ev.isev span,.week .ev.isev,.week .ev.isev span{font-weight:800;color:#1f4fbf}
 textarea.evbox{font-weight:800;color:#1f4fbf}
 textarea.evbox::placeholder{font-weight:400;color:#9aa0b5}
+
+/* ========== 휴대폰 화면 (폭 700px 이하) ========== */
+@media(max-width:700px){
+  body{padding:max(6px,env(safe-area-inset-top)) max(6px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(6px,env(safe-area-inset-left))}
+  .paper{padding:14px 10px 24px;border-radius:8px}
+  input,select,textarea{font-size:16px}      /* 아이폰이 입력칸을 확대하지 않게 */
+  button{min-height:34px}
+  .phead{gap:8px;margin-bottom:12px}
+  .ptitle{font-size:24px}
+  /* 메뉴: 한 줄로 옆으로 밀어서 본다 */
+  .legend{display:flex;overflow-x:auto;gap:16px;width:100%;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+  .legend button{flex:0 0 auto;white-space:nowrap}
+  /* 월간 달력: 칸이 좁으니 글자 대신 종류별 아이콘만 보인다. 날짜를 누르면 그 주로 이동 */
+  .cal>div{height:66px;min-height:66px;padding:2px 3px}
+  .cal .hol{display:none}
+  .cal>div .ev{display:inline-flex;padding:0;margin:1px 2px 0 0;background:none;border:0;width:auto}
+  .cal>div .ev span{display:none}
+  .cal .more{display:none}
+  .cal>div.h{padding:4px 0;font-size:12px}
+  /* 구글 캘린더 줄 */
+  .calmenu{gap:6px}
+  .gacct{margin-left:0;width:100%;order:9}
+  .gsync,.gsync2{flex:1 1 auto}
+  .gchoose{max-width:none;margin:6px 0}
+  /* 주간 표: 옆으로 밀어서 본다 */
+  .weekwrap,.weekflex>div{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .weekflex table.week{min-width:700px}
+  /* 표 */
+  .gradewrap{-webkit-overflow-scrolling:touch}
+  table.grades tr:not(.avgrow):not(.gaprow)>*:nth-child(1){position:sticky;left:0;z-index:2;background:#fff}
+  table.grades tr:not(.avgrow):not(.gaprow)>*:nth-child(2){position:sticky;left:54px;z-index:2;background:#fff}
+  table.grades th:nth-child(-n+2){background:#f1f2f8!important}
+  .rostertwo{display:block;overflow-x:auto}
+  .rostertwo table{min-width:540px;margin-bottom:12px}
+  /* 시간표 */
+  .ttone td.tt,.ttone td.tt textarea{height:70px;min-height:70px;font-size:14px}
+  .ttone table th:first-child{width:36px}
+  /* 통계 */
+  .statmode button{padding:8px 16px;font-size:15px}
+  .archbar input{min-width:0;width:100%}
+  .notepop{width:min(260px,calc(100vw - 16px))}
+  .archsearch input{max-width:none}
+}
+@media(max-width:700px){
+  .weekflex{align-items:stretch}
+  .weekflex .weekwrap{overflow-x:auto;width:100%;max-width:100%}
+  .numtabs{flex-wrap:wrap;gap:6px}
+  .numtabs button{flex:0 0 auto}
+}
+@media(max-width:700px){
+  table.grades tr>*:nth-child(1){min-width:40px;width:40px;white-space:nowrap}
+  table.grades tr>*:nth-child(2){min-width:62px;width:62px;white-space:nowrap}
+  table.grades tr:not(.avgrow):not(.gaprow)>*:nth-child(2){left:40px}
+  table.grades td.c:nth-child(-n+2){font-size:13px}
+  .gradewrap table th,.gradewrap table td{white-space:nowrap}
+}
