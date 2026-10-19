@@ -49,7 +49,7 @@ function DayItems({ items, max, go }) {
   return (
     <>
       {shown.map(({ k, tab, id, Icon, color, text }) => (
-        <div key={k} className={`ev it ${tab ? 'go' : ''}`} title={text} onClick={tab && go ? (e) => { e.stopPropagation(); go(tab, id); } : undefined}><Icon size={12} strokeWidth={2.4} color={color} /><span>{text}</span></div>
+        <div key={k} className={`ev it ${tab ? 'go' : ''} ${Icon === CalendarDays ? 'isev' : ''}`} title={text} onClick={tab && go ? (e) => { e.stopPropagation(); go(tab, id); } : undefined}><Icon size={12} strokeWidth={2.4} color={color} /><span>{text}</span></div>
       ))}
       {max && items.length > max && <div className="more">+{items.length - max}개 더</div>}
     </>

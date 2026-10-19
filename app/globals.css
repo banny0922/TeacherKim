@@ -656,3 +656,8 @@ table.stattable td.notecell{text-align:left;font-size:13px;color:#555;padding:4p
 .cal>div.h{height:auto;min-height:0}
 .cal .ev{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cal .ev span{overflow:hidden;text-overflow:ellipsis}
+
+/* 내 일정(학사일정 칸에 적은 것, 구글에서 가져온 것 포함): 굵은 파란 글씨 */
+.cal .ev.isev,.cal .ev.isev span,.week .ev.isev,.week .ev.isev span{font-weight:800;color:#1f4fbf}
+textarea.evbox{font-weight:800;color:#1f4fbf}
+textarea.evbox::placeholder{font-weight:400;color:#9aa0b5}
