@@ -46,3 +46,15 @@ end $$;
 -- 로그인한 사용자에게 테이블 권한 부여 (없으면 "permission denied for table" 발생)
 grant select, insert, update, delete on all tables in schema public to authenticated;
 alter default privileges in schema public grant select, insert, update, delete on tables to authenticated;
+
+-- 구글 캘린더 구독용 (학사일정 ICS)
+create table if not exists cal_tokens (user_id uuid primary key default auth.uid() references auth.users on delete cascade, token uuid not null default gen_random_uuid());
+alter table cal_tokens enable row level security;
+drop policy if exists "own rows" on cal_tokens;
+create policy "own rows" on cal_tokens for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+grant select, insert, update, delete on cal_tokens to authenticated;
+create or replace function ics_events(t uuid) returns table(id uuid, date date, title text) language sql security definer set search_path = public as $$
+  select e.id, e.date, e.title from events e join cal_tokens c on c.user_id = e.user_id where c.token = t
+$$;
+grant execute on function ics_events(uuid) to anon, authenticated;
+notify pgrst, 'reload schema';

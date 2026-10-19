@@ -56,6 +56,100 @@ function DayItems({ items, max, go }) {
   );
 }
 
+/* 구글 캘린더 연동: 구글 계정을 한 번 허용하면 학사일정을 내 구글 캘린더로 보내거나 가져온다 (브라우저에서 바로 구글과 통신) */
+const GCLIENT = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+const GBASE = 'https://www.googleapis.com/calendar/v3';
+const GAPI = GBASE + '/calendars/primary/events'; // 가져오기(읽기 전용)에만 쓴다
+function GoogleCal({ db, load }) {
+  const [busy, setBusy] = useState('');
+  const [acct, setAcct] = useState(() => { try { return localStorage.getItem('gacct') ?? ''; } catch { return ''; } });
+  const setAcctSave = (x) => { setAcct(x); try { localStorage.setItem('gacct', x); } catch {} };
+  useEffect(() => {
+    if (!GCLIENT || window.google?.accounts) return;
+    const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true; document.head.appendChild(s);
+  }, []);
+  const token = () => new Promise((res, rej) => {
+    if (!GCLIENT) return rej(new Error('구글 연결 설정이 아직 되어 있지 않습니다. (NEXT_PUBLIC_GOOGLE_CLIENT_ID)'));
+    if (!window.google?.accounts) return rej(new Error('구글 연결 준비 중입니다. 잠시 후 다시 눌러 주세요.'));
+    window.google.accounts.oauth2.initTokenClient({
+      client_id: GCLIENT, scope: 'https://www.googleapis.com/auth/calendar.app.created https://www.googleapis.com/auth/calendar.events.readonly', login_hint: acct.trim() || undefined,
+      callback: (r) => (r.access_token ? res(r.access_token) : rej(new Error(r.error_description || r.error || '구글 허용이 취소되었습니다.'))),
+      error_callback: (e) => rej(new Error(e.type === 'popup_closed' ? '구글 허용 창이 닫혔습니다.' : e.message || '구글 연결 실패')),
+    }).requestAccessToken();
+  });
+  const call = async (t, url, opt = {}) => {
+    const r = await fetch(url, { ...opt, headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' } });
+    const j = r.status === 204 ? {} : await r.json().catch(() => ({}));
+    return { status: r.status, j };
+  };
+  const nextDay = (d) => { const x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); };
+  const run = (name, fn) => async () => {
+    setBusy(name);
+    try { await fn(await token()); } catch (e) { alert(e.message); } finally { setBusy(''); }
+  };
+  // 학급일지 전용 캘린더(없으면 새로 만든다). 내 기본 캘린더는 건드리지 않는다
+  const ownCal = async (t) => {
+    let id = ''; try { id = localStorage.getItem('gcal_id') ?? ''; } catch {}
+    if (id) { const ok = await call(t, `${GBASE}/calendars/${encodeURIComponent(id)}`); if (ok.status === 200) return id; }
+    const l = await call(t, `${GBASE}/users/me/calendarList?minAccessRole=owner`);
+    const f = l.status === 200 && (l.j.items ?? []).find((c) => c.summary === '학급일지');
+    if (f) id = f.id;
+    else {
+      const c = await call(t, `${GBASE}/calendars`, { method: 'POST', body: JSON.stringify({ summary: '학급일지', timeZone: 'Asia/Seoul' }) });
+      if (c.status !== 200) throw new Error('구글에 학급일지 캘린더를 만들지 못했습니다. ' + (c.j.error?.message ?? ''));
+      id = c.j.id;
+    }
+    try { localStorage.setItem('gcal_id', id); } catch {}
+    return id;
+  };
+  // 앱 → 구글: 일정 id(uuid)에서 하이픈을 뺀 것을 구글 일정 id로 써서, 다시 보내도 중복되지 않고 고친 내용으로 바뀐다
+  const send = run('send', async (t) => {
+    if (!db.events.length) return alert('보낼 학사일정이 없습니다.');
+    if (!confirm(`학사일정 ${db.events.length}개를 내 구글 계정의 「학급일지」 캘린더로 보낼까요?` + NLX + '기본 캘린더에는 들어가지 않고, 이미 보낸 일정은 고친 내용으로 바뀝니다.')) return;
+    const cal = await ownCal(t);
+    const url = `${GBASE}/calendars/${encodeURIComponent(cal)}/events`;
+    let ok = 0, bad = 0;
+    for (const e of db.events) {
+      const id = e.id.replaceAll('-', '');
+      const [first, ...rest] = String(e.title).split(/\r?\n/);
+      const body = { summary: first || '(제목 없음)', description: rest.join(NLX) || undefined, start: { date: e.date }, end: { date: nextDay(e.date) }, status: 'confirmed' };
+      let r = await call(t, `${url}/${id}`, { method: 'PUT', body: JSON.stringify({ id, ...body }) });
+      if (r.status === 404) r = await call(t, url, { method: 'POST', body: JSON.stringify({ id, ...body }) });
+      if (r.status >= 200 && r.status < 300) ok++; else bad++;
+    }
+    alert(`구글 「학급일지」 캘린더로 보냈습니다. 성공 ${ok}개${bad ? ', 실패 ' + bad + '개' : ''}`);
+  });
+  // 구글 → 앱: 구글 캘린더에 적은 일정(이 앱에서 보낸 것 제외)을 학사일정으로 가져온다. 같은 날짜·제목은 건너뛴다
+  const pull = run('pull', async (t) => {
+    const n = new Date(), sy = n.getMonth() < 2 ? n.getFullYear() - 1 : n.getFullYear();
+    const q = new URLSearchParams({ timeMin: `${sy}-03-01T00:00:00+09:00`, timeMax: `${sy + 1}-03-01T00:00:00+09:00`, singleEvents: 'true', orderBy: 'startTime', maxResults: '500' });
+    const r = await call(t, `${GAPI}?${q}`);
+    if (r.status !== 200) throw new Error('구글 일정을 불러오지 못했습니다. ' + (r.j.error?.message ?? ''));
+    const mine = new Set(db.events.map((e) => e.id.replaceAll('-', '')));
+    const have = new Set(db.events.map((e) => e.date + '|' + e.title));
+    const rows = [];
+    for (const g of r.j.items ?? []) {
+      if (g.status === 'cancelled' || mine.has(g.id)) continue;
+      const date = g.start?.date ?? g.start?.dateTime?.slice(0, 10);
+      const title = (g.summary ?? '').trim();
+      if (!date || !title || have.has(date + '|' + title)) continue;
+      have.add(date + '|' + title); rows.push({ date, title });
+    }
+    if (!rows.length) return alert('새로 가져올 일정이 없습니다.');
+    if (!confirm(`${sy}학년도 구글 캘린더 일정 ${rows.length}개를 학사일정으로 가져올까요?`)) return;
+    const { error } = await sb.from('events').insert(rows);
+    if (error) throw new Error(error.message);
+    await load(); saved();
+  });
+  return (
+    <>
+      <input className="gacct" type="email" value={acct} placeholder="연동할 구글 계정 (예: abc@gmail.com)" onChange={(e) => setAcctSave(e.target.value)} />
+      <button type="button" className="gsync" disabled={!!busy} onClick={send}>{busy === 'send' ? '보내는 중…' : '구글 캘린더로 보내기'}</button>
+      <button type="button" className="gsync2" disabled={!!busy} onClick={pull}>{busy === 'pull' ? '가져오는 중…' : '구글 캘린더에서 가져오기'}</button>
+    </>
+  );
+}
+
 /* 학사일정 (월간 달력) */
 export function Calendar({ db, add, del, uid, load, go }) {
   const [view, setView] = useState('year'); // 기본: 연간 캘린더
@@ -78,6 +172,7 @@ export function Calendar({ db, add, del, uid, load, go }) {
       <button className={view === 'year' ? 'on' : ''} onClick={() => setView('year')}>연간캘린더</button>
       <button className={view === 'month' && y === now.getFullYear() && mo === now.getMonth() ? 'on' : ''} onClick={() => showMonth(now.getFullYear(), now.getMonth())}>이번달</button>
       <button className={view === 'week' && mondayOf(sel) === mondayOf(today()) ? 'on' : ''} onClick={() => showWeek(today())}>이번주</button>
+      <GoogleCal db={db} load={load} />
     </div>
   );
 
@@ -760,8 +855,8 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
     const a = db.scores.filter((x) => x.test_id === tid && !x.mark && x.score !== null && x.score !== undefined && x.score !== '').map((x) => +x.score);
     return a.length ? (a.reduce((p, c) => p + c, 0) / a.length).toFixed(2) : '';
   };
-  // 점수 칸에는 숫자(0 이상) 또는 '결석'만 넣을 수 있다
-  const okScore = (v) => v === '' || v === '결석' || (/^[0-9.]+$/.test(v) && Number.isFinite(+v));
+  // 점수 칸에는 숫자 말고 글자(결석, 미응시, 우수 …)도 넣을 수 있다. 숫자가 아니면 글자 표시로 저장한다.
+  const okScore = () => true;
   const save = (test_id, student_id, raw) => {
     const v = raw.trim();
     if (!okScore(v)) { alert('점수는 숫자 또는 「결석」만 입력할 수 있습니다.'); return false; }
@@ -823,12 +918,12 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
           const v = (r[i] ?? '').trim();
           if (v === '') return;
           if (!okScore(v)) { bad++; return; }
-          const num = v !== '결석';
+          const num = !Number.isNaN(+v);
           out.push({ test_id: ids[h], student_id: st.id, score: num ? +v : null, mark: num ? null : v });
         });
       });
       if (out.length) { const res = await sb.from('scores').upsert(out); if (res.error) return alert(res.error.message); }
-      report.push(sh.sheet + ': 평가 ' + cols.length + '개, 점수 ' + out.length + '개' + (miss ? ' (학생 못 찾음 ' + miss + '줄)' : '') + (bad ? ' (숫자·결석이 아니라 건너뜀 ' + bad + '칸)' : ''));
+      report.push(sh.sheet + ': 평가 ' + cols.length + '개, 점수 ' + out.length + '개' + (miss ? ' (학생 못 찾음 ' + miss + '줄)' : '') + (bad ? ' (건너뜀 ' + bad + '칸)' : ''));
     }
     await load(); saved(); setSub(usable[0].sheet);
     alert(['저장했습니다.', '', ...report].join(NL));
@@ -894,7 +989,7 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
         <label className="btn primary"><Upload size={16} /> 성적 파일 올리기<input type="file" accept=".xlsx,.csv" onChange={(e) => { importScores(e.target.files[0]); e.target.value = ''; }} /></label>
         <button type="button" className="btn" onClick={downloadTemplate}><Download size={16} /> 성적 양식 받기 (우리 반 학생 포함)</button>
         <button type="button" className="btn" onClick={csv}><Download size={16} /> 이 과목 내보내기(CSV)</button>
-        <span className="hint">양식에 점수를 채워 다시 올리거나, 아래 표에서 바로 입력하세요. 점수는 숫자, 결석은 글자로 / 올릴 때 평가 날짜를 입력합니다</span>
+        <span className="hint">양식에 점수를 채워 다시 올리거나, 아래 표에서 바로 입력하세요. 점수는 숫자, 결석·미응시 같은 글자도 가능 / 올릴 때 평가 날짜를 입력합니다</span>
       </div>
       {S.length === 0 ? <p>먼저 학급명렬에서 학생을 추가하세요.</p> : (
         <>

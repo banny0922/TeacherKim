@@ -584,3 +584,17 @@ table.week td.tdc,table.week tr.evrow td.tdc{background:#f4f7ff}
 .pidbar select.pidsel{height:48px;min-width:260px;margin:0;padding:0 48px 0 22px;border-radius:999px;border:0;background-color:#eceefb;color:#4b4c80;font-size:19px;font-weight:700;cursor:pointer;background-position:right 20px center;background-size:16px}
 .pidbar select.pidsel:hover{background-color:#e2e5f8}
 .pidbar select.pidsel:focus{background-color:#fff;box-shadow:0 0 0 2px var(--ac)}
+
+/* 구글 캘린더 연결 */
+.gsync{margin-left:auto;padding:6px 14px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ac2,#6f78c9);font-size:13px}
+.gsyncbox{margin:8px 0 14px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:#fafbff;font-size:14px;line-height:1.6}
+.gsyncbox p{margin:0 0 6px}
+.gsyncbox ol{margin:6px 0 6px 18px;padding:0}
+.gsyncurl{display:flex;gap:6px;margin-bottom:8px}
+.gsyncurl input{flex:1;min-width:0;font-size:13px}
+.calmenu{flex-wrap:wrap}
+.gsyncbox{flex-basis:100%}
+.gsync2{padding:6px 14px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ac2,#6f78c9);font-size:13px}
+.gsync[disabled],.gsync2[disabled]{opacity:.6}
+.gacct{margin-left:auto;width:250px;padding:6px 14px;border-radius:999px;font-size:13px}
+.gacct+.gsync{margin-left:0}
