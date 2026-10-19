@@ -102,16 +102,33 @@ function GoogleCal({ db, load }) {
     try { localStorage.setItem('gcal_id', id); } catch {}
     return id;
   };
+  // 달력에 보이는 모든 기록(일정·교시 메모·체크리스트·메모·수업진도·교무회의·상담)을 날짜별로 모은다. 구글 일정 id = 기록 id(하이픈 제거) + 날짜
+  const allItems = () => {
+    const dates = new Set();
+    db.events.forEach((e) => dates.add(e.date));
+    db.period_notes.forEach((x) => x.text?.trim() && dates.add(x.date));
+    db.checklists.forEach((x) => dates.add(ckDate(x)));
+    db.memos.forEach((x) => dates.add(memoDate(x)));
+    db.progress.forEach((x) => dates.add(x.date));
+    db.meetings.forEach((x) => dates.add(x.date));
+    db.notes.forEach((x) => dates.add(x.date));
+    const out = [];
+    [...dates].filter(Boolean).sort().forEach((date) => dayItems(db, date).forEach((it) => {
+      if (it.text) out.push({ id: it.k.replaceAll('-', '') + date.replaceAll('-', ''), date, text: it.text });
+    }));
+    return out;
+  };
   // 앱 → 구글: 일정 id(uuid)에서 하이픈을 뺀 것을 구글 일정 id로 써서, 다시 보내도 중복되지 않고 고친 내용으로 바뀐다
   const send = run('send', async (t) => {
-    if (!db.events.length) return alert('보낼 학사일정이 없습니다.');
-    if (!confirm(`학사일정 ${db.events.length}개를 내 구글 계정의 「학급일지」 캘린더로 보낼까요?` + NLX + '기본 캘린더에는 들어가지 않고, 이미 보낸 일정은 고친 내용으로 바뀝니다.')) return;
+    const items = allItems();
+    if (!items.length) return alert('보낼 기록이 없습니다. (달력에 적힌 일정·메모·체크리스트 등이 없습니다)');
+    if (!confirm(`달력에 적힌 기록 ${items.length}개를 내 구글 계정의 「학급일지」 캘린더로 보낼까요?` + NLX + '기본 캘린더에는 들어가지 않고, 이미 보낸 일정은 고친 내용으로 바뀝니다.')) return;
     const cal = await ownCal(t);
     const url = `${GBASE}/calendars/${encodeURIComponent(cal)}/events`;
     let ok = 0, bad = 0;
-    for (const e of db.events) {
-      const id = e.id.replaceAll('-', '');
-      const [first, ...rest] = String(e.title).split(/\r?\n/);
+    for (const e of items) {
+      const id = e.id;
+      const [first, ...rest] = String(e.text).split(/\r?\n/);
       const body = { summary: first || '(제목 없음)', description: rest.join(NLX) || undefined, start: { date: e.date }, end: { date: nextDay(e.date) }, status: 'confirmed' };
       let r = await call(t, `${url}/${id}`, { method: 'PUT', body: JSON.stringify({ id, ...body }) });
       if (r.status === 404) r = await call(t, url, { method: 'POST', body: JSON.stringify({ id, ...body }) });
@@ -125,7 +142,7 @@ function GoogleCal({ db, load }) {
     const q = new URLSearchParams({ timeMin: `${sy}-03-01T00:00:00+09:00`, timeMax: `${sy + 1}-03-01T00:00:00+09:00`, singleEvents: 'true', orderBy: 'startTime', maxResults: '500' });
     const r = await call(t, `${GAPI}?${q}`);
     if (r.status !== 200) throw new Error('구글 일정을 불러오지 못했습니다. ' + (r.j.error?.message ?? ''));
-    const mine = new Set(db.events.map((e) => e.id.replaceAll('-', '')));
+    const mine = new Set(allItems().map((e) => e.id));
     const have = new Set(db.events.map((e) => e.date + '|' + e.title));
     const rows = [];
     for (const g of r.j.items ?? []) {
@@ -187,7 +204,7 @@ export function Calendar({ db, add, del, uid, load, go }) {
           <button onClick={() => setYear(now.getFullYear())}>올해</button>
         </h3>
         <div className="yeargrid">
-          {Array.from({ length: 12 }, (_, k) => <MiniMonth key={k} year={year} k={k} onMonth={(kk) => showMonth(year, kk)} onWeek={showWeek} />)}
+          {Array.from({ length: 12 }, (_, k) => <MiniMonth key={k} db={db} year={year} k={k} onMonth={(kk) => showMonth(year, kk)} onWeek={showWeek} />)}
         </div>
         <p className="hint" style={{ marginTop: 10 }}>가로 한 줄(주)을 누르면 그 주로, 달 이름을 누르면 그 달로 이동합니다. 연한 파란 줄은 이번 주입니다.</p>
       </>
@@ -227,8 +244,8 @@ export function Calendar({ db, add, del, uid, load, go }) {
   );
 }
 
-// 연간 캘린더의 한 달: 숫자만 보인다. 가로 한 줄(주)을 누르면 그 주로, 달 이름을 누르면 그 달로
-function MiniMonth({ year, k, onMonth, onWeek }) {
+// 연간 캘린더의 한 달: 숫자 아래에 그날 기록이 있으면 종류별 아이콘만 작게 보인다. 가로 한 줄(주)을 누르면 그 주로, 달 이름을 누르면 그 달로
+function MiniMonth({ db, year, k, onMonth, onWeek }) {
   const lead = (new Date(year, k, 1).getDay() + 6) % 7, n = new Date(year, k + 1, 0).getDate();
   const cells = [...Array(lead).fill(null), ...Array.from({ length: n }, (_, i) => i + 1)];
   while (cells.length % 7) cells.push(null);
@@ -242,9 +259,16 @@ function MiniMonth({ year, k, onMonth, onWeek }) {
       <div className="mhead">{['월', '화', '수', '목', '금', '토', '일'].map((d, i) => <span key={d} className={i === 6 ? 'sun' : i === 5 ? 'sat' : ''}>{d}</span>)}</div>
       {weeks.map((w, wi) => (
         <div key={wi} className={`mweek ${w.some((d) => d && iso(d) === t) ? 'now' : ''}`} onClick={() => onWeek(iso(w.find(Boolean)))} title="이 주로 이동">
-          {w.map((d, i) => d ? (
-            <span key={i} title={holidayName(iso(d)) || ''} className={`${holidayName(iso(d)) || i === 6 ? 'sun' : i === 5 ? 'sat' : ''} ${iso(d) === t ? 'today' : ''}`}>{d}</span>
-          ) : <span key={i} />)}
+          {w.map((d, i) => {
+            if (!d) return <span key={i} />;
+            const icons = [];
+            dayItems(db, iso(d)).forEach((it) => { if (!icons.some((x) => x.Icon === it.Icon)) icons.push(it); });
+            return (
+              <span key={i} title={holidayName(iso(d)) || ''} className={`${holidayName(iso(d)) || i === 6 ? 'sun' : i === 5 ? 'sat' : ''} ${iso(d) === t ? 'today' : ''}`}>{d}
+                {icons.length > 0 && <em className="mic">{icons.slice(0, 3).map(({ Icon, color }, j) => <Icon key={j} size={9} strokeWidth={2.6} color={color} />)}</em>}
+              </span>
+            );
+          })}
         </div>
       ))}
     </div>
@@ -520,8 +544,41 @@ export function Meetings({ db, add, del, upd, focus }) {
   );
 }
 
+/* 새 학년도 시작 전 백업: 명단·과목별 성적(비고 포함)·상담기록·체크리스트를 한 엑셀 파일로 내려받는다 */
+async function backupXlsx(db, S) {
+  const { default: writeXlsxFile } = await import('write-excel-file/browser');
+  const head = (x) => ({ value: x, fontWeight: 'bold', backgroundColor: '#eef0f7', align: 'center' });
+  const cell = (x) => (x === '' || x === null || x === undefined ? null : { value: typeof x === 'number' ? x : String(x) });
+  const numOfS = (st) => st.num ?? S.indexOf(st) + 1;
+  const stu = [...S].sort((a, b) => (a.num ?? 1e9) - (b.num ?? 1e9));
+  const used = new Set();
+  const sheetName = (n) => { let s = String(n || '시트').replace(/[*?:\\/\[\]]/g, ' ').slice(0, 26) || '시트'; let k = s, i = 2; while (used.has(k)) k = s + i++; used.add(k); return k; };
+  const sheets = [];
+  sheets.push({ sheet: sheetName('학급명렬'), columns: [{ width: 8 }, { width: 14 }, { width: 16 }, { width: 18 }, { width: 18 }],
+    data: [['번호', '이름', '학생 연락처', '학부모 연락처1', '학부모 연락처2'].map(head), ...stu.map((s) => [cell(numOfS(s)), cell(s.name), cell(s.phone), cell(s.parent_phone), cell(s.parent_phone2)])] });
+  const subs = [...new Set(db.tests.map((t) => t.subject).filter(Boolean))];
+  subs.forEach((sj) => {
+    const ts = db.tests.filter((t) => t.subject === sj).sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
+    const sc = (t, s) => db.scores.find((x) => x.test_id === t.id && x.student_id === s.id);
+    sheets.push({ sheet: sheetName(sj), columns: [{ width: 8 }, { width: 14 }, ...ts.flatMap(() => [{ width: 12 }, { width: 16 }])],
+      data: [['번호', '이름', ...ts.flatMap((t) => [`${t.name} ${t.date ?? ''}`.trim(), '비고'])].map(head),
+        ...stu.map((s) => [cell(numOfS(s)), cell(s.name), ...ts.flatMap((t) => { const x = sc(t, s); return [cell(x?.mark ?? x?.score), cell(x?.note)]; })])] });
+  });
+  if (db.timetable.some((t) => t.kind === 'class' && t.text?.trim())) {
+    const tt = (d, pe) => db.timetable.find((t) => t.kind === 'class' && t.day === d && t.period === pe)?.text ?? '';
+    sheets.push({ sheet: sheetName('시간표'), columns: [{ width: 8 }, ...[1, 2, 3, 4, 5].map(() => ({ width: 14 }))],
+      data: [['교시', '월', '화', '수', '목', '금'].map(head), ...[1, 2, 3, 4, 5, 6].map((pe) => [cell(pe), ...[1, 2, 3, 4, 5].map((d) => cell(tt(d, pe)))])] });
+  }
+  const nm = (id) => S.find((x) => x.id === id);
+  if (db.notes.length) sheets.push({ sheet: sheetName('상담기록'), columns: [{ width: 8 }, { width: 12 }, { width: 12 }, { width: 14 }, { width: 14 }, { width: 60 }],
+    data: [['번호', '이름', '날짜', '대상', '방법', '내용'].map(head), ...[...db.notes].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '')).map((n) => [cell(nm(n.student_id) ? numOfS(nm(n.student_id)) : ''), cell(nm(n.student_id)?.name), cell(n.date), cell(n.target), cell(n.method), cell(n.text)])] });
+  if (db.checklists.length) sheets.push({ sheet: sheetName('체크리스트'), columns: [{ width: 12 }, { width: 24 }, { width: 70 }],
+    data: [['날짜', '제목', '체크한 학생'].map(head), ...[...db.checklists].sort((a, b) => ckDate(a).localeCompare(ckDate(b))).map((c) => [cell(ckDate(c)), cell(c.title), cell(db.checks.filter((k) => k.checklist_id === c.id).map((k) => nm(k.student_id)).filter(Boolean).sort((a, b) => numOfS(a) - numOfS(b)).map((s) => `${numOfS(s)} ${s.name}`).join(', '))])] });
+  await writeXlsxFile(sheets).toFile(`학급일지_백업_${today()}.xlsx`);
+}
+
 /* 학급명렬 */
-export function Roster({ S, add, del, upd, load }) {
+export function Roster({ db, S, add, del, upd, load }) {
   const [selId, setSelId] = useState(null); // 칸을 눌러 고치는 중인 학생 = 선택된 줄
   const picked = S.find((s) => s.id === selId);
   const importXlsx = async (file) => {
@@ -555,11 +612,69 @@ export function Roster({ S, add, del, upd, load }) {
     if (blank) [1, 2].forEach((k) => rows.push({ n: last + k }));
     return rows;
   };
+  // 이 학급의 기록을 '지난기록'으로 통째로 보관한다. 성공하면 true (실패하면 안내를 띄우고 false)
+  const saveArchive = async () => {
+    const today0 = new Date(), sy = today0.getMonth() < 2 ? today0.getFullYear() - 1 : today0.getFullYear();
+    const snap = {
+      students: S.map((s) => ({ id: s.id, num: s.num, name: s.name, phone: s.phone, parent_phone: s.parent_phone, parent_phone2: s.parent_phone2 })),
+      tests: db.tests.map((t) => ({ id: t.id, subject: t.subject, name: t.name, date: t.date })),
+      scores: db.scores.map((x) => ({ test_id: x.test_id, student_id: x.student_id, score: x.score, mark: x.mark, note: x.note })),
+      notes: db.notes.map((n) => ({ student_id: n.student_id, date: n.date, target: n.target, method: n.method, text: n.text })),
+      checklists: db.checklists.map((c) => ({ id: c.id, date: ckDate(c), title: c.title })),
+      checks: db.checks.map((k) => ({ checklist_id: k.checklist_id, student_id: k.student_id })),
+      timetable: db.timetable.filter((t) => t.kind === 'class').map((t) => ({ day: t.day, period: t.period, text: t.text })),
+    };
+    // 같은 학년도 이름의 보관본이 이미 있으면 새로 쌓지 않고 그 보관본을 덮어쓴다
+    const label = sy + '학년도';
+    const ex = (db.archives ?? []).find((x) => x.label === label);
+    if (!S.length) { alert('지금 학생 명단이 비어 있어 보관하지 않았습니다.' + NLX + '(이미 보관된 지난기록을 빈 기록으로 덮어쓰지 않기 위해서입니다)'); return false; }
+    if (ex && (ex.data?.students?.length ?? 0) > S.length && !confirm('이미 보관된 「' + label + '」에는 학생이 ' + ex.data.students.length + '명 있는데, 지금은 ' + S.length + '명입니다.' + NLX + '지금 기록으로 덮어쓰면 이전 보관 내용이 바뀝니다. 덮어쓸까요?')) return false;
+    const keep = ex
+      ? await sb.from('archives').update({ data: snap, created_at: new Date().toISOString() }).eq('id', ex.id)
+      : await sb.from('archives').insert({ label, data: snap });
+    if (keep.error) { alert((/archives/.test(keep.error.message) ? '지난기록을 보관할 곳이 아직 없습니다. Supabase SQL Editor에서 안내해 드린 SQL을 한 번 실행해 주세요.' : '지난기록 보관에 실패했습니다. ' + keep.error.message) + NLX + '아무것도 지우지 않았습니다.'); return false; }
+    return true;
+  };
+  // 새 학년도 시작: 지금 학급의 기록을 '지난기록'에 보관하고 백업 엑셀을 내려받는다. 지우지는 않는다 (지우기는 '학생 전체 삭제' 버튼)
+  const newYear = async () => {
+    if (!S.length && !db.tests.length && !db.checklists.length && !db.timetable.length) return alert('보관할 학생·성적·체크리스트·시간표가 없습니다.');
+    if (!confirm('새 학년도를 시작합니다.' + NLX + NLX + '지금 학급의 명단·성적(비고 포함)·상담·체크리스트·시간표가 "지난기록"으로 이동(보관)됩니다. 백업 엑셀도 내려받습니다.' + NLX + '이 단계에서는 아무것도 지우지 않습니다.' + NLX + '학생은 보관한 뒤 아래 "학생 전체 삭제" 버튼으로 삭제하세요.' + NLX + NLX + '진행할까요?')) return;
+    if (!(await saveArchive())) return;
+    try { await backupXlsx(db, S); } catch (e) { await load(); return alert('지난기록에는 보관했지만 백업 엑셀은 만들지 못했습니다.' + NLX + e.message); }
+    await load(); saved();
+    alert('지난 학급 기록이 "지난기록"으로 이동(보관)되었습니다. 백업 엑셀도 내려받았습니다.' + NLX + NLX + '학생은 아래 "학생 전체 삭제" 버튼으로 삭제하세요.' + NLX + '(지금은 아무것도 지우지 않았습니다)');
+  };
   const clearAll = async () => {
-    if (!S.length || !confirm('학생 ' + S.length + '명과 그 성적·체크·상담 기록이 모두 지워집니다. 정말 지울까요?')) return;
-    if (!confirm('되돌릴 수 없습니다. 한 번 더 확인합니다. 모두 지울까요?')) return;
-    const { error } = await sb.from('students').delete().in('id', S.map((x) => x.id));
-    if (error) alert(error.message); else { await load(); saved(); }
+    // 가장 최근에 보관한 지난기록과 지금 학생 명단을 한 명씩 비교한다. 하나라도 다르면 지우지 않는다
+    const last = [...(db.archives ?? [])].sort((x, y) => (y.created_at ?? '').localeCompare(x.created_at ?? ''))[0];
+    if (!last) return alert('먼저 위쪽 "새 학년도 시작"을 눌러 지금 학급 기록을 "지난기록"에 보관하세요.' + NLX + '보관한 뒤에만 지울 수 있습니다. (아무것도 지우지 않았습니다)');
+    const kept = new Map((last.data?.students ?? []).map((s) => [s.id, s]));
+    const label = (s) => (s.num ? s.num + '번 ' : '번호없음 ') + (s.name || '(이름 없음)');
+    const missing = S.filter((s) => !kept.has(s.id));
+    const changed = S.filter((s) => { const k = kept.get(s.id); return k && ((k.num ?? null) !== (s.num ?? null) || (k.name ?? '') !== (s.name ?? '') || (k.phone ?? '') !== (s.phone ?? '') || (k.parent_phone ?? '') !== (s.parent_phone ?? '') || (k.parent_phone2 ?? '') !== (s.parent_phone2 ?? '')); });
+    const nowIds = new Set(S.map((s) => s.id));
+    const gone = [...kept.values()].filter((s) => !nowIds.has(s.id)).sort((x, y) => (x.num ?? 1e9) - (y.num ?? 1e9)); // 보관본에는 있는데 지금 명단에서 빠진 학생
+    if (missing.length || changed.length || gone.length) {
+      const list = (arr) => arr.slice(0, 12).map(label).join(', ') + (arr.length > 12 ? ' 외 ' + (arr.length - 12) + '명' : '');
+      return alert('지난기록(' + last.label + ')에 보관된 학생 명단과 지금 명단이 달라서 지울 수 없습니다.' + NLX + NLX
+        + (missing.length ? '· 보관본에 없는 학생: ' + list(missing) + NLX : '')
+        + (gone.length ? '· 보관본에는 있는데 지금 명단에 없는 학생: ' + list(gone) + NLX : '')
+        + (changed.length ? '· 보관 후 정보가 바뀐 학생: ' + list(changed) + NLX : '')
+        + NLX + (gone.length ? '※ 보관 후에 지운 학생이 있으면, 지금 기록으로 다시 보관(덮어쓰기)할 때 그 학생의 보관 기록은 빠집니다.' + NLX + '그 학생을 다시 등록하거나, 빠져도 괜찮을 때만 다시 보관하세요.' + NLX : '')
+        + '위쪽 "새 학년도 시작"을 눌러 지금 기록을 다시 보관한 뒤 지워 주세요. (아무것도 지우지 않았습니다)');
+    }
+    if (!S.length && !db.tests.length && !db.checklists.length && !db.timetable.length) return alert('지울 것이 없습니다.');
+    if (!confirm('지난기록에 보관된 것을 확인했습니다.' + NLX + NLX + '학생 ' + S.length + '명과 성적·평가, 체크리스트, 상담기록, 시간표를 모두 지웁니다.' + NLX + '일정으로 등록한 학사일정, 교시 메모, 메모, 교무회의, 수업진도·수행계획표 사진은 남습니다.' + NLX + '정말 지울까요?')) return;
+    if (!confirm('되돌릴 수 없습니다. 한 번 더 확인합니다. 지울까요?')) return;
+    const steps = [['students', S.map((x) => x.id)], ['tests', db.tests.map((x) => x.id)], ['checklists', db.checklists.map((x) => x.id)], ['timetable', db.timetable.map((x) => x.id)], ['tt_changes', (db.tt_changes ?? []).map((x) => x.id)]];
+    for (const [t, ids] of steps) {
+      if (!ids.length) continue;
+      const { error } = await sb.from(t).delete().in('id', ids);
+      if (error && t === 'tt_changes') continue; // 이 표가 아직 없는 경우는 무시
+      if (error) { await load(); return alert('지우는 중 오류가 났습니다(' + t + '): ' + error.message); }
+    }
+    await load(); saved();
+    alert('새 학급을 시작할 준비가 끝났습니다. 위쪽에서 새 학생 명단을 올려 주세요.');
   };
   const colA = column(Array.from({ length: 15 }, (_, i) => i + 1), sorted.filter((s) => s.num > 15 && s.num < 51).map((s) => s.num), sorted.filter((s) => !s.num), false);
   const colB = column(Array.from({ length: 15 }, (_, i) => 51 + i), sorted.filter((s) => s.num > 65).map((s) => s.num), [], true);
@@ -589,6 +704,7 @@ export function Roster({ S, add, del, upd, load }) {
       <div className="toolbar">
         <label className="btn primary"><Upload size={16} /> 엑셀·CSV로 학생 올리기<input type="file" accept=".xlsx,.csv" onChange={(e) => { importXlsx(e.target.files[0]); e.target.value = ''; }} /></label>
         <a className="btn" href="/samples/sample-roster.xlsx" download="샘플_학생명단.xlsx"><Download size={16} /> 샘플 파일 받기</a>
+        <button type="button" className="btn danger" onClick={newYear} title="지금 학급 기록을 지난기록에 보관하고 백업 엑셀을 받습니다(지우지 않음)">새 학년도 시작</button>
         <span className="hint">열 순서: 번호 · 이름 · 학생 연락처 · 학부모 연락처1 · 학부모 연락처2 (첫 줄은 머리글)</span>
       </div>
       <div className="two rostertwo">
@@ -843,6 +959,16 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
   // 날짜순으로 보여 준다
   const tests = db.tests.filter((t) => t.subject === cur).sort((a, b) => tDate(a).localeCompare(tDate(b)));
   const newDate = today();
+  // 비고: 점수 칸마다 하나씩 (scores.note)
+  const [notePop, setNotePop] = useState(null); // 비고를 쓰는 중인 점수 칸 {tid, sid, x, y}
+  const note = (tid, sid) => row(tid, sid)?.note ?? '';
+  const saveNote = (tid, sid, raw) => {
+    const t = raw.trim();
+    if (t === note(tid, sid)) return;
+    setDb((d) => ({ ...d, scores: [...d.scores.filter((x) => !(x.test_id === tid && x.student_id === sid)), { score: null, mark: null, ...(row(tid, sid) ?? {}), test_id: tid, student_id: sid, note: t }] }));
+    sb.from('scores').upsert({ test_id: tid, student_id: sid, note: t })
+      .then(({ error }) => (error ? alert(/note/.test(error.message) ? '비고를 저장할 곳이 아직 없습니다. Supabase SQL Editor에서 안내해 드린 SQL을 한 번 실행해 주세요.' : error.message) : saved()));
+  };
   const row = (tid, sid) => db.scores.find((x) => x.test_id === tid && x.student_id === sid);
   const text = (tid, sid) => { const r = row(tid, sid); return r?.mark ?? (r?.score ?? ''); };
   const cls = (tid, sid) => {
@@ -863,7 +989,7 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
     const num = v !== '' && !Number.isNaN(+v);
     const score = num ? +v : null, mark = v === '' || num ? null : v;
     if (String(text(test_id, student_id)) === v) return true;
-    setDb((d) => ({ ...d, scores: [...d.scores.filter((x) => !(x.test_id === test_id && x.student_id === student_id)), { test_id, student_id, score, mark }] }));
+    setDb((d) => ({ ...d, scores: [...d.scores.filter((x) => !(x.test_id === test_id && x.student_id === student_id)), { ...(row(test_id, student_id) ?? {}), test_id, student_id, score, mark }] }));
     sb.from('scores').upsert({ test_id, student_id, score, mark }).then(({ error }) => (error ? alert(error.message) : saved()));
     return true;
   };
@@ -871,7 +997,7 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
   const ordered = [...S].sort((a, b) => (a.num ?? 1e9) - (b.num ?? 1e9));
   let cut = -1, gap = 0;
   ordered.forEach((st, i) => { const g = i ? (st.num ?? 0) - (ordered[i - 1].num ?? 0) : 0; if (g >= 10 && g > gap) { gap = g; cut = i; } });
-  // 엑셀/CSV 올리기: 시트 하나 = 과목 하나. 각 시트의 첫 줄 = 번호·이름·평가명들, 아래 = 학생별 점수(숫자 또는 결석 같은 글자)
+  // 엑셀/CSV 올리기: 시트 하나 = 과목 하나. 각 시트의 첫 줄 = 번호·이름·평가명들(평가 열 바로 오른쪽에 '비고' 열을 두면 그 평가의 비고), 아래 = 학생별 점수(숫자 또는 결석 같은 글자)
   const NL = String.fromCharCode(10);
   const importScores = async (file) => {
     if (!file) return;
@@ -897,7 +1023,11 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
       const head = sh.rows[sh.hi];
       const ci = head.findIndex((c) => c.includes('번호')), cn = head.findIndex((c) => c.includes('이름'));
       const body = sh.rows.slice(sh.hi + 1);
-      const cols = head.map((h, i) => ({ h, i })).filter(({ h, i }) => h && i !== ci && i !== cn && body.some((rw) => (rw[i] ?? '').trim() !== ''));
+      const isNote = (h) => String(h ?? '').trim() === '비고';
+      const noteCols = new Set(head.map((h, i) => (isNote(h) ? i : -1)).filter((i) => i >= 0));
+      const noteOf = (i) => (noteCols.has(i + 1) ? i + 1 : -1); // 평가 열 바로 오른쪽 '비고' 열
+      const cols = head.map((h, i) => ({ h, i, ni: noteOf(i) })).filter(({ h, i, ni }) => h && i !== ci && i !== cn && !noteCols.has(i) && body.some((rw) => (rw[i] ?? '').trim() !== '' || (ni >= 0 && (rw[ni] ?? '').trim() !== '')));
+      const withNotes = cols.some((c) => c.ni >= 0);
       if (!cols.length) { report.push(sh.sheet + ': 평가 열 없음'); continue; }
       const ids = {};
       for (const { h } of cols) {
@@ -914,12 +1044,16 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
       sh.rows.slice(sh.hi + 1).forEach((r) => {
         const st = (ci >= 0 && byNum[+r[ci]]) || (cn >= 0 && byName[r[cn]]);
         if (!st) { if (r.some(Boolean)) miss++; return; }
-        cols.forEach(({ h, i }) => {
+        cols.forEach(({ h, i, ni }) => {
           const v = (r[i] ?? '').trim();
-          if (v === '') return;
+          const nv = ni >= 0 ? (r[ni] ?? '').trim() : '';
+          if (v === '' && nv === '') return;
           if (!okScore(v)) { bad++; return; }
-          const num = !Number.isNaN(+v);
-          out.push({ test_id: ids[h], student_id: st.id, score: num ? +v : null, mark: num ? null : v });
+          const ex = db.scores.find((x) => x.test_id === ids[h] && x.student_id === st.id);
+          const num = v !== '' && !Number.isNaN(+v);
+          const row = v === '' ? { score: ex?.score ?? null, mark: ex?.mark ?? null } : { score: num ? +v : null, mark: num ? null : v };
+          // 비고 열이 있는 파일일 때만 note 를 함께 저장한다(없는 파일은 기존 비고를 건드리지 않는다)
+          out.push({ test_id: ids[h], student_id: st.id, ...row, ...(withNotes ? { note: ni >= 0 && nv !== '' ? nv : ex?.note ?? null } : {}) });
         });
       });
       if (out.length) { const res = await sb.from('scores').upsert(out); if (res.error) return alert(res.error.message); }
@@ -938,19 +1072,25 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
       const ts = db.tests.filter((t) => t.subject === sj).sort((a, b) => tDate(a).localeCompare(tDate(b)));
       const spare = ts.length ? 2 : 3;
       const heads = [...ts.map((t) => t.name), ...Array.from({ length: spare }, (_, i) => (ts.length ? '' : '평가' + (i + 1)))];
-      const data = [[head('번호'), head('이름'), ...heads.map((h) => head(h))]];
+      // 평가 열마다 바로 오른쪽에 '비고' 열을 둔다
+      const data = [[head('번호'), head('이름'), ...heads.flatMap((h) => [head(h), head('비고')])]];
       ordered.forEach((st) => {
         data.push([{ value: numOf(st, S.indexOf(st)), align: 'center' }, { value: st.name, align: 'center' },
-          ...heads.map((_, i) => { const t = ts[i]; const v = t ? text(t.id, st.id) : ''; return v === '' ? null : { value: v, align: 'center' }; })]);
+          ...heads.flatMap((_, i) => {
+            const t = ts[i]; const v = t ? text(t.id, st.id) : ''; const n = t ? note(t.id, st.id) : '';
+            return [v === '' ? null : { value: v, align: 'center' }, n === '' ? null : { value: n }];
+          })]);
       });
-      return { data, sheet: sj.slice(0, 28), columns: [{ width: 8 }, { width: 14 }, ...heads.map(() => ({ width: 11 }))] };
+      return { data, sheet: sj.slice(0, 28), columns: [{ width: 8 }, { width: 14 }, ...heads.flatMap(() => [{ width: 11 }, { width: 16 }])] };
     });
     await writeXlsxFile(sheets).toFile('우리반_성적양식.xlsx');
   };
   const csv = () => {
-    const rows = [['번호', '이름', ...tests.map((t) => `${t.name} ${t.date ?? ''}`)],
-      ...S.map((s, i) => [numOf(s, i), s.name, ...tests.map((t) => text(t.id, s.id))]),
-      ['', '평균', ...tests.map((t) => avg(t.id))]];
+    // 비고가 있는 평가는 바로 오른쪽에 '비고' 열을 붙인다 (올리기와 같은 모양)
+    const hasN = (t) => S.some((s) => note(t.id, s.id));
+    const rows = [['번호', '이름', ...tests.flatMap((t) => (hasN(t) ? [`${t.name} ${t.date ?? ''}`, '비고'] : [`${t.name} ${t.date ?? ''}`]))],
+      ...S.map((s, i) => [numOf(s, i), s.name, ...tests.flatMap((t) => (hasN(t) ? [text(t.id, s.id), note(t.id, s.id)] : [text(t.id, s.id)]))]),
+      ['', '평균', ...tests.flatMap((t) => (hasN(t) ? [avg(t.id), ''] : [avg(t.id)]))]];
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([String.fromCharCode(0xfeff) + rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join(String.fromCharCode(10))]));
     a.download = (cur || '성적') + '.csv'; a.click();
@@ -1005,13 +1145,33 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
               <Fragment key={s.id}>
                 {i === cut && i > 0 && <tr className="gaprow"><td colSpan={2 + tests.length} /></tr>}
                 <tr><td className="c">{numOf(s, S.indexOf(s))}</td><td className="c">{s.name}</td>
-                  {tests.map((t) => <td key={t.id} className="c"><input className={cls(t.id, s.id)} key={String(text(t.id, s.id))} defaultValue={text(t.id, s.id)} onBlur={(e) => { if (!save(t.id, s.id, e.target.value)) e.target.value = String(text(t.id, s.id)); }} /></td>)}
+                  {tests.map((t) => {
+                    const nt = note(t.id, s.id);
+                    return (
+                      <td key={t.id} className={`c scell ${nt ? 'hasnote' : ''}`} title={nt ? '비고: ' + nt : undefined}>
+                        <input className={cls(t.id, s.id)} key={String(text(t.id, s.id))} defaultValue={text(t.id, s.id)} onBlur={(e) => { if (!save(t.id, s.id, e.target.value)) e.target.value = String(text(t.id, s.id)); }} />
+                        <button type="button" className="notebtn" title={nt ? '비고 보기·고치기' : '비고 쓰기'} onClick={(e) => { const b = e.currentTarget.getBoundingClientRect(); setNotePop({ tid: t.id, sid: s.id, x: Math.min(b.left, window.innerWidth - 270), y: b.bottom + 4 }); }}><StickyNote size={12} strokeWidth={2.4} /></button>
+                      </td>
+                    );
+                  })}
                 </tr>
               </Fragment>
             ))}
             <tr className="avgrow"><td className="c" colSpan="2">전체평균</td>{tests.map((t) => <td key={t.id} className="c">{avg(t.id)}</td>)}</tr>
           </tbody></table>
         </div>
+        {notePop && (
+          <div className="notepop" style={{ left: Math.max(8, notePop.x), top: notePop.y }}>
+            <div className="notepopt">{S.find((x) => x.id === notePop.sid)?.name} · {db.tests.find((x) => x.id === notePop.tid)?.name} 비고</div>
+            <textarea autoFocus rows="3" defaultValue={note(notePop.tid, notePop.sid)} placeholder="예: 지각, 재시험 예정" id="notetxt"
+              onKeyDown={(e) => { if (e.key === 'Escape') setNotePop(null); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveNote(notePop.tid, notePop.sid, e.target.value); setNotePop(null); } }} />
+            <div className="notepopb">
+              <button type="button" onClick={() => setNotePop(null)}>닫기</button>
+              {note(notePop.tid, notePop.sid) && <button type="button" className="danger" onClick={() => { saveNote(notePop.tid, notePop.sid, ''); setNotePop(null); }}>지우기</button>}
+              <button type="button" className="primary" onClick={() => { saveNote(notePop.tid, notePop.sid, document.getElementById('notetxt').value); setNotePop(null); }}>저장</button>
+            </div>
+          </div>
+        )}
         </>
       )}
     </>
@@ -1041,6 +1201,138 @@ function LineChart({ labels, series, min, max, invert, unit = '' }) {
         );
       })}
     </svg>
+  );
+}
+
+/* 지난기록: 새 학년도를 시작할 때 보관해 둔 이전 학급의 명단·성적·상담·체크리스트·시간표 (읽기 전용) */
+export function Archive({ db, load }) {
+  const list = [...(db.archives ?? [])].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+  const [sel, setSel] = useState(null);
+  const [part, setPart] = useState('grades');
+  const [sub, setSub] = useState('');
+  const [who, setWho] = useState('');
+  const [q, setQ] = useState(''); // 전체 학년도 학생 검색
+  const cur = list.find((a) => a.id === sel) ?? list[0];
+  const d = cur?.data ?? {};
+  const stu = [...(d.students ?? [])].sort((a, b) => (a.num ?? 1e9) - (b.num ?? 1e9));
+  const nm = (id) => stu.find((s) => s.id === id);
+  const subs = [...new Set((d.tests ?? []).map((t) => t.subject).filter(Boolean))];
+  const subCur = subs.includes(sub) ? sub : subs[0] ?? '';
+  const tests = (d.tests ?? []).filter((t) => t.subject === subCur).sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
+  const sc = Object.fromEntries((d.scores ?? []).map((x) => [x.test_id + '|' + x.student_id, x]));
+  const show = (r) => (r ? r.mark ?? (r.score ?? '') : '');
+  const avg = (t) => { const a = stu.map((s) => sc[t.id + '|' + s.id]).filter((r) => r && !r.mark && r.score !== null && r.score !== undefined).map((r) => +r.score); return a.length ? (a.reduce((p, c) => p + c, 0) / a.length).toFixed(2) : ''; };
+  const rename = async (label) => { if (label.trim() && label.trim() !== cur.label) { const { error } = await sb.from('archives').update({ label: label.trim() }).eq('id', cur.id); if (error) alert(error.message); else { saved(); load(); } } };
+  const remove = async () => {
+    if (!confirm(`「${cur.label}」 보관 기록을 완전히 삭제할까요?` + String.fromCharCode(10) + '되돌릴 수 없습니다.')) return;
+    const { error } = await sb.from('archives').delete().eq('id', cur.id);
+    if (error) return alert(error.message);
+    setSel(null); saved(); load();
+  };
+  if (!list.length) return <p style={{ color: 'var(--mute)' }}>아직 보관된 지난 기록이 없습니다. <b>학급명렬</b>의 <b>새 학년도 시작</b>을 누르면 그때까지의 명단·성적·상담·체크리스트·시간표가 여기에 보관됩니다.</p>;
+  const key = q.trim();
+  const found = key ? list.flatMap((a) => (a.data?.students ?? []).filter((s) => (s.name ?? '').includes(key)).map((s) => ({ a, s }))) : [];
+  const notes = [...(d.notes ?? [])].filter((n) => !who || nm(n.student_id)?.name?.includes(who)).sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+  return (
+    <>
+      <div className="archsearch">
+        <input placeholder="학생 이름으로 모든 학년도 기록 검색" value={q} onChange={(e) => setQ(e.target.value)} />
+        {key && <button type="button" onClick={() => setQ('')}>검색 지우기</button>}
+      </div>
+      {key ? (
+        found.length === 0 ? <p className="hint">「{key}」 이름의 학생이 보관된 기록에 없습니다.</p> : found.map(({ a, s }) => {
+          const D = a.data ?? {};
+          const tsc = Object.fromEntries((D.scores ?? []).filter((x) => x.student_id === s.id).map((x) => [x.test_id, x]));
+          const mine = (D.tests ?? []).filter((t) => tsc[t.id]).sort((x, y) => (x.subject ?? '').localeCompare(y.subject ?? '') || (x.date ?? '').localeCompare(y.date ?? ''));
+          const sn = (D.notes ?? []).filter((n) => n.student_id === s.id).sort((x, y) => (y.date ?? '').localeCompare(x.date ?? ''));
+          const ck = (D.checklists ?? []).filter((c) => (D.checks ?? []).some((k) => k.checklist_id === c.id && k.student_id === s.id));
+          return (
+            <div key={a.id + s.id} className="archcard">
+              <h3>{a.label} · {s.num ?? ''}번 {s.name}</h3>
+              <p className="hint">{[s.phone && '학생 ' + s.phone, s.parent_phone && '학부모1 ' + s.parent_phone, s.parent_phone2 && '학부모2 ' + s.parent_phone2].filter(Boolean).join(' · ')}</p>
+              {mine.length > 0 && (
+                <div className="gradewrap"><table className="stattable"><tbody>
+                  <tr><th>과목</th><th>평가</th><th>날짜</th><th>점수</th><th>비고</th></tr>
+                  {mine.map((t) => { const r = tsc[t.id]; return <tr key={t.id}><td className="c">{t.subject}</td><td className="c">{t.name}</td><td className="c">{(t.date ?? '').slice(5).replace('-', '/')}</td><td className="c">{r.mark ?? (r.score ?? '')}</td><td className="notecell">{r.note ?? ''}</td></tr>; })}
+                </tbody></table></div>
+              )}
+              {sn.length > 0 && (
+                <div className="gradewrap"><table className="stattable"><tbody>
+                  <tr><th>상담 날짜</th><th>대상</th><th>방법</th><th>내용</th></tr>
+                  {sn.map((n, i) => <tr key={i}><td className="c">{n.date}</td><td className="c">{n.target}</td><td className="c">{n.method}</td><td className="notecell" style={{ whiteSpace: 'pre-wrap' }}>{n.text}</td></tr>)}
+                </tbody></table></div>
+              )}
+              {ck.length > 0 && <p className="hint">체크리스트에 체크된 항목: {ck.map((c) => `${c.title || '체크리스트'}(${c.date})`).join(', ')}</p>}
+              {!mine.length && !sn.length && !ck.length && <p className="hint">보관된 성적·상담·체크 기록이 없습니다.</p>}
+            </div>
+          );
+        })
+      ) : <>
+      <div className="numtabs sheets">
+        {list.map((a) => <button key={a.id} className={a.id === cur.id ? 'on' : ''} onClick={() => { setSel(a.id); setSub(''); }}>{a.label}</button>)}
+      </div>
+      <div className="archbar">
+        <input key={cur.id + cur.label} defaultValue={cur.label} title="이름 고치기" onBlur={(e) => rename(e.target.value)} />
+        <span className="hint">{(cur.created_at ?? '').slice(0, 10)} 보관 · 학생 {stu.length}명 · 읽기 전용</span>
+        <button type="button" className="danger" onClick={remove}>이 보관 기록 삭제</button>
+      </div>
+      <div className="numtabs months">
+        {[['grades', '성적'], ['roster', '명단'], ['notes', '상담기록'], ['checks', '체크리스트'], ['tt', '시간표']].map(([k, n]) => <button key={k} className={k === part ? 'on' : ''} onClick={() => setPart(k)}>{n}</button>)}
+      </div>
+
+      {part === 'roster' && (
+        <div className="gradewrap"><table className="stattable"><tbody>
+          <tr><th>번호</th><th>이름</th><th>학생 연락처</th><th>학부모 연락처1</th><th>학부모 연락처2</th></tr>
+          {stu.map((s) => <tr key={s.id}><td className="c">{s.num ?? ''}</td><td className="c">{s.name}</td><td className="c">{s.phone}</td><td className="c">{s.parent_phone}</td><td className="c">{s.parent_phone2}</td></tr>)}
+        </tbody></table></div>
+      )}
+
+      {part === 'grades' && (subs.length === 0 ? <p className="hint">보관된 성적이 없습니다.</p> : (
+        <>
+          <div className="numtabs sheets">{subs.map((n) => <button key={n} className={n === subCur ? 'on' : ''} onClick={() => setSub(n)}>{n}</button>)}</div>
+          <div className="gradewrap"><table className="stattable"><tbody>
+            <tr><th>번호</th><th>이름</th>{tests.map((t) => <th key={t.id}>{t.name}<br /><small>{(t.date ?? '').slice(5).replace('-', '/')}</small></th>)}</tr>
+            {stu.map((s) => (
+              <tr key={s.id}><td className="c">{s.num ?? ''}</td><td className="c">{s.name}</td>
+                {tests.map((t) => { const r = sc[t.id + '|' + s.id]; return <td key={t.id} className="c" title={r?.note ? '비고: ' + r.note : undefined}>{show(r)}{r?.note ? <sup title={r.note}> ●</sup> : null}</td>; })}
+              </tr>
+            ))}
+            <tr className="avgrow"><td className="c" colSpan="2">전체평균</td>{tests.map((t) => <td key={t.id} className="c">{avg(t)}</td>)}</tr>
+          </tbody></table></div>
+          <p className="hint">● 표시가 있는 칸은 비고가 있습니다(마우스를 올리면 보입니다).</p>
+        </>
+      ))}
+
+      {part === 'notes' && (
+        <>
+          <p><input placeholder="학생 이름 검색" value={who} onChange={(e) => setWho(e.target.value)} /></p>
+          {notes.length === 0 ? <p className="hint">보관된 상담기록이 없습니다.</p> : (
+            <div className="gradewrap"><table className="stattable"><tbody>
+              <tr><th>날짜</th><th>학생</th><th>대상</th><th>방법</th><th>내용</th></tr>
+              {notes.map((n, i) => <tr key={i}><td className="c">{n.date}</td><td className="c">{nm(n.student_id)?.name}</td><td className="c">{n.target}</td><td className="c">{n.method}</td><td className="notecell" style={{ whiteSpace: 'pre-wrap' }}>{n.text}</td></tr>)}
+            </tbody></table></div>
+          )}
+        </>
+      )}
+
+      {part === 'checks' && ((d.checklists ?? []).length === 0 ? <p className="hint">보관된 체크리스트가 없습니다.</p> : (
+        <div className="gradewrap"><table className="stattable"><tbody>
+          <tr><th style={{ width: 90 }}>날짜</th><th style={{ width: 200 }}>제목</th><th>체크한 학생</th></tr>
+          {[...(d.checklists ?? [])].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '')).map((c) => {
+            const names = (d.checks ?? []).filter((k) => k.checklist_id === c.id).map((k) => nm(k.student_id)).filter(Boolean).sort((a, b) => (a.num ?? 1e9) - (b.num ?? 1e9));
+            return <tr key={c.id}><td className="c">{c.date}</td><td className="c">{c.title}</td><td className="notecell">{names.map((s) => `${s.num ?? ''} ${s.name}`).join(', ')} <small style={{ color: 'var(--mute)' }}>({names.length}/{stu.length})</small></td></tr>;
+          })}
+        </tbody></table></div>
+      ))}
+
+      {part === 'tt' && (
+        <div className="gradewrap"><table className="stattable"><tbody>
+          <tr><th style={{ width: 54 }}>교시</th>{['월', '화', '수', '목', '금'].map((x) => <th key={x}>{x}</th>)}</tr>
+          {[1, 2, 3, 4, 5, 6].map((pe) => <tr key={pe}><td className="c">{pe}</td>{[1, 2, 3, 4, 5].map((dy) => <td key={dy} className="c">{(d.timetable ?? []).find((t) => t.day === dy && t.period === pe)?.text ?? ''}</td>)}</tr>)}
+        </tbody></table></div>
+      )}
+      </>}
+    </>
   );
 }
 
@@ -1084,7 +1376,10 @@ export function Stats({ db, S }) {
     S.forEach((st) => { const r = sc[t.id + '|' + st.id]; if (isNum(r)) nums.push(+r.score); else if (r?.mark && String(r.mark).includes('결석')) abs++; });
     const bins = [nums.filter((x) => x >= 100).length, nums.filter((x) => x >= 90 && x < 100).length, nums.filter((x) => x >= 80 && x < 90).length, nums.filter((x) => x >= 70 && x < 80).length, nums.filter((x) => x < 70).length];
     const rk = rankMap(S.filter((st) => isNum(sc[t.id + '|' + st.id])).map((st) => ({ id: st.id, v: +sc[t.id + '|' + st.id].score })));
-    return { t, nums, abs, rk, avg: avgOf(nums), max: nums.length ? Math.max(...nums) : null, min: nums.length ? Math.min(...nums) : null, med: median(nums), bins };
+    const wc = {};
+    S.forEach((st) => { const m = String(sc[t.id + '|' + st.id]?.mark ?? '').trim(); if (m && !m.includes('결석')) wc[m] = (wc[m] ?? 0) + 1; });
+    const words = Object.entries(wc).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    return { t, nums, abs, rk, words, avg: avgOf(nums), max: nums.length ? Math.max(...nums) : null, min: nums.length ? Math.min(...nums) : null, med: median(nums), bins };
   });
   const all = per.flatMap((x) => x.nums);
   const absAll = per.reduce((p, c) => p + c.abs, 0);
@@ -1140,15 +1435,16 @@ export function Stats({ db, S }) {
           <h3>평가별 통계</h3>
           <div className="gradewrap">
             <table className="stattable"><tbody>
-              <tr><th>평가</th><th>날짜</th><th>응시</th><th>평균</th><th>최고</th><th>최저</th><th>중앙값</th><th>결석</th><th style={{ width: '34%' }}>점수 분포</th></tr>
+              <tr><th>평가</th><th>날짜</th><th>응시</th><th>평균</th><th>최고</th><th>최저</th><th>중앙값</th><th>결석</th><th style={{ width: '34%' }}>점수 분포 · 글자 평가</th></tr>
               {per.map((x) => (
                 <tr key={x.t.id}>
                   <td className="c"><b>{x.t.name}</b></td><td className="c">{tDate(x.t).slice(5).replace('-', '/')}</td>
-                  <td className="c">{x.nums.length}명</td><td className="c"><b>{f2(x.avg)}</b></td><td className="c">{f0(x.max)}</td><td className="c">{f0(x.min)}</td><td className="c">{f0(x.med)}</td><td className="c">{x.abs || '-'}</td>
+                  <td className="c">{x.nums.length + x.words.reduce((p, w) => p + w[1], 0)}명</td><td className="c"><b>{f2(x.avg)}</b></td><td className="c">{f0(x.max)}</td><td className="c">{f0(x.min)}</td><td className="c">{f0(x.med)}</td><td className="c">{x.abs || '-'}</td>
                   <td>
                     <div className="dist" title={BIN.map(([l], i) => l + ' ' + x.bins[i] + '명').join(' · ')}>
                       {x.bins.map((c, i) => c > 0 && <i key={i} style={{ flex: c, background: BIN[i][1] }}>{c}</i>)}
                     </div>
+                    {x.words.length > 0 && <div className="wchips">{x.words.map(([w, c]) => <span key={w} className="wchip">{w} <b>{c}명</b></span>)}</div>}
                   </td>
                 </tr>
               ))}
@@ -1272,7 +1568,7 @@ export function Stats({ db, S }) {
                 })()}
                 <div className="gradewrap">
                   <table className="stattable"><tbody>
-                    <tr><th>평가</th><th>날짜</th><th>점수</th><th>학급 평균</th><th>차이</th><th>등수</th></tr>
+                    <tr><th>평가</th><th>날짜</th><th>점수</th><th>학급 평균</th><th>차이</th><th>등수</th><th>비고</th></tr>
                     {per.map((x) => {
                       const r0 = sc[x.t.id + '|' + me.id];
                       const d = isNum(r0) && x.avg !== null ? +r0.score - x.avg : null;
@@ -1283,6 +1579,7 @@ export function Stats({ db, S }) {
                           <td className="c">{f2(x.avg)}</td>
                           <td className={`c ${d > 0 ? 'hi' : d < 0 ? 'lo' : ''}`}>{d === null ? '-' : (d > 0 ? '▲ ' : d < 0 ? '▼ ' : '') + f2(Math.abs(d))}</td>
                           <td className="c">{x.rk[me.id] ? x.rk[me.id] + '위' : '-'}</td>
+                          <td className="notecell">{r0?.note ?? ''}</td>
                         </tr>
                       );
                     })}
