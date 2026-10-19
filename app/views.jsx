@@ -59,20 +59,21 @@ function DayItems({ items, max, go }) {
 /* 구글 캘린더 연동: 구글 계정을 한 번 허용하면 학사일정을 내 구글 캘린더로 보내거나 가져온다 (브라우저에서 바로 구글과 통신) */
 const GCLIENT = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 const GBASE = 'https://www.googleapis.com/calendar/v3';
-const GAPI = GBASE + '/calendars/primary/events'; // 가져오기(읽기 전용)에만 쓴다
-function GoogleCal({ db, load }) {
+function GoogleCal({ db, load, email }) {
   const [busy, setBusy] = useState('');
-  const [acct, setAcct] = useState(() => { try { return localStorage.getItem('gacct') ?? ''; } catch { return ''; } });
+  // 연동할 구글 계정: 기억해 둔 값 → 없으면 앱 로그인 이메일이 구글(gmail) 계정일 때 그것을 미리 넣는다
+  const isGoogle = /@(gmail|googlemail)\.com$/i.test(email ?? '');
+  const [acct, setAcct] = useState(() => { try { return localStorage.getItem('gacct') ?? (isGoogle ? email : ''); } catch { return isGoogle ? email : ''; } });
   const setAcctSave = (x) => { setAcct(x); try { localStorage.setItem('gacct', x); } catch {} };
   useEffect(() => {
     if (!GCLIENT || window.google?.accounts) return;
     const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true; document.head.appendChild(s);
   }, []);
-  const token = () => new Promise((res, rej) => {
+  const token = (scope = 'https://www.googleapis.com/auth/calendar.app.created') => new Promise((res, rej) => {
     if (!GCLIENT) return rej(new Error('구글 연결 설정이 아직 되어 있지 않습니다. (NEXT_PUBLIC_GOOGLE_CLIENT_ID)'));
     if (!window.google?.accounts) return rej(new Error('구글 연결 준비 중입니다. 잠시 후 다시 눌러 주세요.'));
     window.google.accounts.oauth2.initTokenClient({
-      client_id: GCLIENT, scope: 'https://www.googleapis.com/auth/calendar.app.created https://www.googleapis.com/auth/calendar.events.readonly', login_hint: acct.trim() || undefined,
+      client_id: GCLIENT, scope, login_hint: acct.trim() || undefined,
       callback: (r) => (r.access_token ? res(r.access_token) : rej(new Error(r.error_description || r.error || '구글 허용이 취소되었습니다.'))),
       error_callback: (e) => rej(new Error(e.type === 'popup_closed' ? '구글 허용 창이 닫혔습니다.' : e.message || '구글 연결 실패')),
     }).requestAccessToken();
@@ -83,23 +84,24 @@ function GoogleCal({ db, load }) {
     return { status: r.status, j };
   };
   const nextDay = (d) => { const x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); };
-  const run = (name, fn) => async () => {
+  const run = (name, fn, scope) => async () => {
     setBusy(name);
-    try { await fn(await token()); } catch (e) { alert(e.message); } finally { setBusy(''); }
+    try { await fn(await token(scope)); } catch (e) { alert(e.message); } finally { setBusy(''); }
   };
-  // 학급일지 전용 캘린더(없으면 새로 만든다). 내 기본 캘린더는 건드리지 않는다
-  const ownCal = async (t) => {
-    let id = ''; try { id = localStorage.getItem('gcal_id') ?? ''; } catch {}
+  // 이름이 같은 내 캘린더가 있으면 그것을 쓰고, 없으면 새로 만든다. (기본 캘린더는 건드리지 않는다)
+  const ownCal = async (t, name) => {
+    const key = 'gcal_id_' + name;
+    let id = ''; try { id = localStorage.getItem(key) ?? ''; } catch {}
     if (id) { const ok = await call(t, `${GBASE}/calendars/${encodeURIComponent(id)}`); if (ok.status === 200) return id; }
     const l = await call(t, `${GBASE}/users/me/calendarList?minAccessRole=owner`);
-    const f = l.status === 200 && (l.j.items ?? []).find((c) => c.summary === '학급일지');
+    const f = l.status === 200 && (l.j.items ?? []).find((c) => c.summary === name);
     if (f) id = f.id;
     else {
-      const c = await call(t, `${GBASE}/calendars`, { method: 'POST', body: JSON.stringify({ summary: '학급일지', timeZone: 'Asia/Seoul' }) });
-      if (c.status !== 200) throw new Error('구글에 학급일지 캘린더를 만들지 못했습니다. ' + (c.j.error?.message ?? ''));
+      const c = await call(t, `${GBASE}/calendars`, { method: 'POST', body: JSON.stringify({ summary: name, timeZone: 'Asia/Seoul' }) });
+      if (c.status !== 200) throw new Error('구글에 「' + name + '」 캘린더를 만들지 못했습니다. ' + (c.j.error?.message ?? ''));
       id = c.j.id;
     }
-    try { localStorage.setItem('gcal_id', id); } catch {}
+    try { localStorage.setItem(key, id); } catch {}
     return id;
   };
   // 달력에 보이는 모든 기록(일정·교시 메모·체크리스트·메모·수업진도·교무회의·상담)을 날짜별로 모은다. 구글 일정 id = 기록 id(하이픈 제거) + 날짜
@@ -118,12 +120,16 @@ function GoogleCal({ db, load }) {
     }));
     return out;
   };
-  // 앱 → 구글: 일정 id(uuid)에서 하이픈을 뺀 것을 구글 일정 id로 써서, 다시 보내도 중복되지 않고 고친 내용으로 바뀐다
-  const send = run('send', async (t) => {
+  // 앱 → 구글: 일정 id(기록 id+날짜)를 구글 일정 id로 써서, 다시 보내도 중복되지 않고 고친 내용으로 바뀐다
+  // mode 'new' = 「학급일지」 전용 캘린더(없으면 새로 만듦), 'primary' = 내 기존(기본) 캘린더에 추가
+  const [calName, setCalName] = useState(() => { try { return localStorage.getItem('gcal_name') || '학급일지'; } catch { return '학급일지'; } });
+  const sendTo = (mode) => run('send', async (t) => {
+    const name = calName.trim() || '학급일지';
     const items = allItems();
     if (!items.length) return alert('보낼 기록이 없습니다. (달력에 적힌 일정·메모·체크리스트 등이 없습니다)');
-    if (!confirm(`달력에 적힌 기록 ${items.length}개를 내 구글 계정의 「학급일지」 캘린더로 보낼까요?` + NLX + '기본 캘린더에는 들어가지 않고, 이미 보낸 일정은 고친 내용으로 바뀝니다.')) return;
-    const cal = await ownCal(t);
+    const where = mode === 'primary' ? '내 기존(기본) 캘린더' : '새 「' + name + '」 캘린더(없으면 새로 만듦)';
+    if (!confirm(`달력에 적힌 기록 ${items.length}개를 ${where}에 보낼까요?` + NLX + (mode === 'primary' ? '기존 캘린더에 일정이 추가됩니다. 이미 보낸 일정은 고친 내용으로 바뀝니다.' : '기본 캘린더에는 들어가지 않고, 이미 보낸 일정은 고친 내용으로 바뀝니다.'))) return;
+    const cal = mode === 'primary' ? 'primary' : await ownCal(t, name);
     const url = `${GBASE}/calendars/${encodeURIComponent(cal)}/events`;
     let ok = 0, bad = 0;
     for (const e of items) {
@@ -134,41 +140,29 @@ function GoogleCal({ db, load }) {
       if (r.status === 404) r = await call(t, url, { method: 'POST', body: JSON.stringify({ id, ...body }) });
       if (r.status >= 200 && r.status < 300) ok++; else bad++;
     }
-    alert(`구글 「학급일지」 캘린더로 보냈습니다. 성공 ${ok}개${bad ? ', 실패 ' + bad + '개' : ''}`);
-  });
-  // 구글 → 앱: 구글 캘린더에 적은 일정(이 앱에서 보낸 것 제외)을 학사일정으로 가져온다. 같은 날짜·제목은 건너뛴다
-  const pull = run('pull', async (t) => {
-    const n = new Date(), sy = n.getMonth() < 2 ? n.getFullYear() - 1 : n.getFullYear();
-    const q = new URLSearchParams({ timeMin: `${sy}-03-01T00:00:00+09:00`, timeMax: `${sy + 1}-03-01T00:00:00+09:00`, singleEvents: 'true', orderBy: 'startTime', maxResults: '500' });
-    const r = await call(t, `${GAPI}?${q}`);
-    if (r.status !== 200) throw new Error('구글 일정을 불러오지 못했습니다. ' + (r.j.error?.message ?? ''));
-    const mine = new Set(allItems().map((e) => e.id));
-    const have = new Set(db.events.map((e) => e.date + '|' + e.title));
-    const rows = [];
-    for (const g of r.j.items ?? []) {
-      if (g.status === 'cancelled' || mine.has(g.id)) continue;
-      const date = g.start?.date ?? g.start?.dateTime?.slice(0, 10);
-      const title = (g.summary ?? '').trim();
-      if (!date || !title || have.has(date + '|' + title)) continue;
-      have.add(date + '|' + title); rows.push({ date, title });
-    }
-    if (!rows.length) return alert('새로 가져올 일정이 없습니다.');
-    if (!confirm(`${sy}학년도 구글 캘린더 일정 ${rows.length}개를 학사일정으로 가져올까요?`)) return;
-    const { error } = await sb.from('events').insert(rows);
-    if (error) throw new Error(error.message);
-    await load(); saved();
-  });
+    alert(`${mode === 'primary' ? '내 기존 캘린더' : '구글 「' + name + '」 캘린더'}에 보냈습니다. 성공 ${ok}개${bad ? ', 실패 ' + bad + '개' : ''}`);
+  }, mode === 'primary' ? 'https://www.googleapis.com/auth/calendar.events' : 'https://www.googleapis.com/auth/calendar.app.created');
+  const [choose, setChoose] = useState(false);
+  const pick = (mode) => { if (mode === 'new') { try { localStorage.setItem('gcal_name', calName.trim() || '학급일지'); } catch {} } setChoose(false); sendTo(mode)(); };
   return (
     <>
       <input className="gacct" type="email" value={acct} placeholder="연동할 구글 계정 (예: abc@gmail.com)" onChange={(e) => setAcctSave(e.target.value)} />
-      <button type="button" className="gsync" disabled={!!busy} onClick={send}>{busy === 'send' ? '보내는 중…' : '구글 캘린더로 보내기'}</button>
-      <button type="button" className="gsync2" disabled={!!busy} onClick={pull}>{busy === 'pull' ? '가져오는 중…' : '구글 캘린더에서 가져오기'}</button>
-    </>
+      <button type="button" className="gsync" disabled={!!busy} onClick={() => setChoose(!choose)}>{busy === 'send' ? '보내는 중…' : '구글 캘린더로 보내기'}</button>
+      {choose && (
+        <div className="gchoose">
+          <b>어디로 보낼까요?</b>
+          <label className="gname">새 캘린더 이름 <input value={calName} maxLength={60} onChange={(e) => setCalName(e.target.value)} placeholder="학급일지" /></label>
+          <button type="button" onClick={() => pick('new')}><span>새 캘린더 만들어서 넣기</span><small>위 이름의 캘린더를 따로 만들어 거기에만 넣습니다. 같은 이름의 캘린더가 이미 있으면 그것을 씁니다.</small></button>
+          <button type="button" onClick={() => pick('primary')}><span>내 기존 캘린더에 추가</span><small>지금 쓰는 기본 캘린더에 일정이 같이 보입니다.</small></button>
+          <button type="button" className="gcancel" onClick={() => setChoose(false)}>취소</button>
+        </div>
+      )}
+      </>
   );
 }
 
 /* 학사일정 (월간 달력) */
-export function Calendar({ db, add, del, uid, load, go }) {
+export function Calendar({ db, add, del, uid, email, load, go }) {
   const [view, setView] = useState('year'); // 기본: 연간 캘린더
   const [year, setYear] = useState(new Date().getFullYear());
   const [m, setM] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
@@ -189,7 +183,7 @@ export function Calendar({ db, add, del, uid, load, go }) {
       <button className={view === 'year' ? 'on' : ''} onClick={() => setView('year')}>연간캘린더</button>
       <button className={view === 'month' && y === now.getFullYear() && mo === now.getMonth() ? 'on' : ''} onClick={() => showMonth(now.getFullYear(), now.getMonth())}>이번달</button>
       <button className={view === 'week' && mondayOf(sel) === mondayOf(today()) ? 'on' : ''} onClick={() => showWeek(today())}>이번주</button>
-      <GoogleCal db={db} load={load} />
+      <GoogleCal db={db} load={load} email={email} />
     </div>
   );
 

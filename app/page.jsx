@@ -43,10 +43,10 @@ export default function Page() {
     return () => data.subscription.unsubscribe();
   }, []);
   if (session === undefined) return null;
-  return session ? <Planner uid={session.user.id} /> : <Login />;
+  return session ? <Planner uid={session.user.id} email={session.user.email} /> : <Login />;
 }
 
-function Planner({ uid }) {
+function Planner({ uid, email }) {
   const [tab, setTab] = useState('calendar');
   const [reset, setReset] = useState(0);
   const [focus, setFocus] = useState(null);
@@ -77,7 +77,7 @@ function Planner({ uid }) {
   const del = (t, id, msg) => confirm(msg ?? '삭제할까요?') && write(sb.from(t).delete().eq('id', id));
 
   const S = [...db.students].sort((a, b) => (a.num ?? 1e9) - (b.num ?? 1e9) || a.created_at.localeCompare(b.created_at));
-  const p = { db, S, uid, add, upd, del, write, load, setDb, go, focus };
+  const p = { db, S, uid, email, add, upd, del, write, load, setDb, go, focus };
   const View = { calendar: Calendar, timetable: Timetable, progress: Progress, meetings: Meetings, roster: Roster, checklist: Checklists, counsel: Counsel, memo: Memos, grades: Grades, stats: Stats, archive: Archive }[tab];
   return (
     <>
