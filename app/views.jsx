@@ -999,6 +999,7 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
   const tests = db.tests.filter((t) => t.subject === cur).sort((a, b) => tDate(a).localeCompare(tDate(b)));
   const newDate = today();
   // 비고: 점수 칸마다 하나씩 (scores.note)
+  const [selRow, setSelRow] = useState(null); // 번호·이름을 눌러 선택한 학생 줄
   const [notePop, setNotePop] = useState(null); // 비고를 쓰는 중인 점수 칸 {tid, sid, x, y}
   const note = (tid, sid) => row(tid, sid)?.note ?? '';
   const saveNote = (tid, sid, raw) => {
@@ -1183,7 +1184,7 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
             {ordered.map((s, i) => (
               <Fragment key={s.id}>
                 {i === cut && i > 0 && <tr className="gaprow"><td colSpan={2 + tests.length} /></tr>}
-                <tr><td className="c">{numOf(s, S.indexOf(s))}</td><td className="c">{s.name}</td>
+                <tr className={selRow === s.id ? 'rowsel' : ''} onClick={() => setSelRow(s.id)}><td className="c">{numOf(s, S.indexOf(s))}</td><td className="c">{s.name}</td>
                   {tests.map((t) => {
                     const nt = note(t.id, s.id);
                     return (

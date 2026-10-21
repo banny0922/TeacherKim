@@ -719,6 +719,7 @@ textarea.evbox::placeholder{font-weight:400;color:#9aa0b5}
 }
 
 /* 성적 입력: 점수를 쓰는 줄 전체를 하늘색으로 */
-table.grades tr:focus-within>td{background:#dff1fb!important}
-table.grades tr:focus-within>td input:not(.noteedit){background:transparent}
-table.grades tr:focus-within>td:first-child,table.grades tr:focus-within>td:nth-child(2){font-weight:700;color:#1d5f86}
+table.grades tr:focus-within>td,table.grades tr.rowsel>td{background:#dff1fb!important}
+table.grades tr:focus-within>td input:not(.noteedit),table.grades tr.rowsel>td input:not(.noteedit){background:transparent}
+table.grades tr:focus-within>td:first-child,table.grades tr:focus-within>td:nth-child(2),table.grades tr.rowsel>td:first-child,table.grades tr.rowsel>td:nth-child(2){font-weight:700;color:#1d5f86}
+table.grades tr>td:first-child,table.grades tr>td:nth-child(2){cursor:pointer}
