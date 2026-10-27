@@ -1178,7 +1178,7 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
           <table className="grades"><tbody>
             <tr><th style={{ width: 54 }}>번호</th><th style={{ width: 90 }}>이름</th>
               {tests.map((t) => <th key={t.id}>
-                <input className="hname" key={t.name} defaultValue={t.name} title="평가 이름 (눌러서 수정)" onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== t.name && upd('tests', t.id, { name: e.target.value.trim() })} /><br />
+                <textarea className="hname" rows="1" key={t.name} defaultValue={t.name} title="평가 이름 (눌러서 수정)" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } }} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== t.name && upd('tests', t.id, { name: e.target.value.trim() })} />
                 <input type="date" className="hdate" key={t.date ?? ''} defaultValue={t.date ?? ''} title="평가 날짜 (눌러서 수정)" onBlur={(e) => e.target.value !== (t.date ?? '') && upd('tests', t.id, { date: e.target.value || null })} /><button className="tdel" title="이 평가(열) 삭제 — 점수도 함께 지워집니다" onClick={() => del('tests', t.id, `${cur} 「${t.name}」 평가(열)를 삭제할까요?` + NLX + '모든 학생의 이 평가 점수가 함께 지워집니다.')}><Trash2 size={13} /></button></th>)}
             </tr>
             {ordered.map((s, i) => (
