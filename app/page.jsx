@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { NotebookPen } from 'lucide-react';
 import { sb, saved } from './sb';
-import { Calendar, Timetable, Progress, Meetings, Roster, Checklists, Counsel, Memos, Grades, Stats, Archive } from './views';
+import { Calendar, Timetable, Progress, Meetings, Roster, Checklists, Counsel, Memos, Grades, Stats, Archive, useSaveOnLeave } from './views';
 
 const TABS = { calendar: '학사일정', timetable: '시간표', progress: '수업진도', meetings: '교무회의', roster: '학급명렬', checklist: '체크리스트', counsel: '상담기록', memo: '메모하기', grades: '성적', stats: '성적통계', archive: '지난기록' };
 const LEGEND = [['calendar', '#f08fa0'], ['timetable', '#f4b183'], ['progress', '#f1d36b'], ['meetings', '#8fcf9a'], ['grades', '#6fc3c3'], ['stats', '#a3c46a'], ['roster', '#7fb2ea'], ['checklist', '#8c8cd8'], ['counsel', '#b58ad9'], ['memo', '#d98fc4'], ['archive', '#9aa0b5']];
@@ -47,6 +47,7 @@ export default function Page() {
 }
 
 function Planner({ uid, email }) {
+  useSaveOnLeave(); // 앱을 나가는 순간 쓰던 글을 자동 저장
   const [tab, setTab] = useState('calendar');
   const [reset, setReset] = useState(0);
   const [focus, setFocus] = useState(null);

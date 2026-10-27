@@ -5,6 +5,16 @@ import { holidayName } from './holidays';
 import { readSheets, readTable } from './readTable';
 import { CalendarDays, PenLine, ListChecks, StickyNote, BookOpen, Users, MessageCircle, Upload, Download, Trash2, Plus, Pencil, Camera } from 'lucide-react';
 
+export function useSaveOnLeave() {
+  useEffect(() => {
+    const flush = () => { const a = document.activeElement; if (a && a !== document.body && typeof a.blur === 'function') a.blur(); };
+    const onVis = () => { if (document.visibilityState === 'hidden') flush(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', flush);
+    return () => { document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pagehide', flush); };
+  }, []);
+}
+
 // 새 기록을 바로 만들고 id를 돌려준다 (칸에서 벗어나면 자동 저장)
 async function createRow(table, row, load) {
   const { data, error } = await sb.from(table).insert(row).select().single();
