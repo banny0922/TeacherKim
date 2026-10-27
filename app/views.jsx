@@ -1,10 +1,17 @@
 'use client';
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { sb, today, saved } from './sb';
 import { holidayName } from './holidays';
 import { readSheets, readTable } from './readTable';
 import { CalendarDays, PenLine, ListChecks, StickyNote, BookOpen, Users, MessageCircle, Upload, Download, Trash2, Plus, Pencil, Camera } from 'lucide-react';
 
+// 새 기록을 바로 만들고 id를 돌려준다 (칸에서 벗어나면 자동 저장)
+async function createRow(table, row, load) {
+  const { data, error } = await sb.from(table).insert(row).select().single();
+  if (error) { alert(error.message); return null; }
+  saved(); await load(); return data.id;
+}
+const leaving = (e) => !e.currentTarget.contains(e.relatedTarget); // 같은 폼 안에서 다른 칸으로 옮겨 가는 중이면 false
 const fd = (e) => { e.preventDefault(); return Object.fromEntries(new FormData(e.target)); };
 const Del = ({ onClick }) => <button className="x" onClick={onClick}>삭제</button>;
 const dateDesc = (a, b) => b.date.localeCompare(a.date);
@@ -525,7 +532,8 @@ export function Progress({ db, uid, load }) {
 }
 
 /* 교무회의: 학년도 월 탭(3~2), 왼쪽 제목 목록 / 오른쪽 입력·내용 */
-export function Meetings({ db, add, del, upd, focus }) {
+export function Meetings({ db, del, upd, load, focus }) {
+  const busy = useRef(false);
   const fr = db.meetings.find((m) => m.id === focus?.id);
   const now = fr ? new Date(fr.date + 'T00:00:00') : new Date();
   const sy = now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear(); // 학년도 시작(3월)
@@ -557,7 +565,11 @@ export function Meetings({ db, add, del, upd, focus }) {
           <button style={{ marginTop: 10 }} onClick={() => setSel(null)}>+ 새 회의 쓰기</button>
         </div>
         {cur ? (
-          <form key={cur.id} onSubmit={(e) => { const d = fd(e); upd('meetings', cur.id, { date: d.date, title: d.title, content: d.content }); }}>
+          <form key={cur.id} onSubmit={(e) => e.preventDefault()} onBlur={(e) => {
+            if (!leaving(e)) return;
+            const d = Object.fromEntries(new FormData(e.currentTarget));
+            if (d.date !== cur.date || d.title !== (cur.title ?? '') || d.content !== (cur.content ?? '')) upd('meetings', cur.id, { date: d.date, title: d.title, content: d.content });
+          }}>
             <table className="counseltable"><tbody>
               <tr><th style={{ width: 70 }}>날짜</th><td><input type="date" name="date" defaultValue={cur.date} /></td></tr>
               <tr><th>제목</th><td><input name="title" defaultValue={cur.title ?? ''} /></td></tr>
@@ -565,17 +577,22 @@ export function Meetings({ db, add, del, upd, focus }) {
             </tbody></table>
             <div className="actions">
               <button type="button" className="danger" onClick={() => { del('meetings', cur.id, `${cur.date.slice(5)} 「${cur.title || '제목 없음'}」 회의 기록을 삭제할까요?`); setSel(null); }}>삭제</button>
-              <button>수정 저장</button>
             </div>
           </form>
         ) : (
-          <form onSubmit={(e) => { e.preventDefault(); if (f.title.trim() || f.content.trim()) { add('meetings', f); setF({ ...f, title: '', content: '' }); } }}>
+          <form onSubmit={(e) => e.preventDefault()} onBlur={async (e) => {
+            if (!leaving(e) || busy.current || !(f.title.trim() || f.content.trim())) return;
+            busy.current = true;
+            const id = await createRow('meetings', f, load);
+            busy.current = false;
+            if (id) { setSel(id); setF({ date: f.date, title: '', content: '' }); }
+          }}>
             <table className="counseltable"><tbody>
               <tr><th style={{ width: 70 }}>날짜</th><td><input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} /></td></tr>
               <tr><th>제목</th><td><input value={f.title} placeholder="회의 제목" onChange={(e) => setF({ ...f, title: e.target.value })} /></td></tr>
               <tr><th className="tall">회의<br />내용</th><td className="body"><textarea value={f.content} onChange={(e) => setF({ ...f, content: e.target.value })} /></td></tr>
             </tbody></table>
-            <button>저장</button>
+            <p className="hint" style={{ margin: '8px 0 0' }}>쓰다가 칸을 벗어나면 자동으로 저장됩니다.</p>
           </form>
         )}
       </div>
@@ -835,7 +852,8 @@ export function Checklists({ db, S, del, upd, write, load, focus }) {
 }
 
 /* 상담기록 */
-export function Counsel({ db, S, add, del, upd, focus }) {
+export function Counsel({ db, S, del, upd, load, focus }) {
+  const busy = useRef(false);
   const fr = db.notes.find((n) => n.id === focus?.id);
   const [sid, setSid] = useState(fr?.student_id ?? S[0]?.id ?? '');
   const [date, setDate] = useState(today());
@@ -872,7 +890,21 @@ export function Counsel({ db, S, add, del, upd, focus }) {
     setPhoto(null); saved();
   };
   const mine = db.notes.filter((n) => n.student_id === stu?.id).sort(dateDesc);
-  const pick = (opts, val, set) => opts.map((o) => <td key={o} className={`pick ${val === o ? 'on' : ''}`} onClick={() => set(o)}>{o}</td>);
+  // 상담 내용은 쓰다가 칸을 벗어나면(또는 대상·방법을 고르면) 자동 저장. 처음이면 새 기록을 만들고, 이후에는 그 기록을 고친다
+  const persist = async (over = {}) => {
+    const row = { date, target, method, text, ...over };
+    if (!row.text.trim()) return;
+    if (editId) {
+      const c = db.notes.find((x) => x.id === editId);
+      if (c && (c.date !== row.date || (c.target ?? '') !== row.target || (c.method ?? '') !== row.method || (c.text ?? '') !== row.text)) upd('notes', editId, row);
+    } else if (!busy.current) {
+      busy.current = true;
+      const id = await createRow('notes', { ...row, student_id: stu.id }, load);
+      busy.current = false;
+      if (id) setEditId(id);
+    }
+  };
+  const pick = (opts, val, set, key) => opts.map((o) => <td key={o} className={`pick ${val === o ? 'on' : ''}`} onClick={() => { set(o); persist({ [key]: o }); }}>{o}</td>);
   if (!S.length) return <p>먼저 학급명렬에서 학생을 추가하세요.</p>;
   return (
     <>
@@ -902,16 +934,15 @@ export function Counsel({ db, S, add, del, upd, focus }) {
             ))}
           </div>
         </div>
-        <form onSubmit={(e) => { e.preventDefault(); if (!text.trim()) return; if (editId) { upd('notes', editId, { date, target, method, text }); setEditId(null); } else add('notes', { date, student_id: stu.id, target, method, text }); setText(''); }}>
+        <form onSubmit={(e) => e.preventDefault()}>
           <table className="counseltable"><tbody>
-            <tr><th>날짜</th><td colSpan="3"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></td></tr>
-            <tr><th>대상</th>{pick(['학생', '학부모', '친구'], target, setTarget)}</tr>
-            <tr><th>방법</th>{pick(['면담', '전화', '문자/인터넷'], method, setMethod)}</tr>
-            <tr><th className="tall">상담<br />내용</th><td colSpan="3" className="body"><textarea value={text} onChange={(e) => setText(e.target.value)} /></td></tr>
+            <tr><th>날짜</th><td colSpan="3"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => persist()} /></td></tr>
+            <tr><th>대상</th>{pick(['학생', '학부모', '친구'], target, setTarget, 'target')}</tr>
+            <tr><th>방법</th>{pick(['면담', '전화', '문자/인터넷'], method, setMethod, 'method')}</tr>
+            <tr><th className="tall">상담<br />내용</th><td colSpan="3" className="body"><textarea value={text} onChange={(e) => setText(e.target.value)} onBlur={() => persist()} placeholder="쓰다가 칸을 벗어나면 자동으로 저장됩니다" /></td></tr>
           </tbody></table>
           <div className="actions">
             {editId ? <button type="button" onClick={() => { setEditId(null); setText(''); setDate(today()); }}>새로 쓰기</button> : <span />}
-            <button>{editId ? '수정 저장' : '저장'}</button>
           </div>
         </form>
       </div>
@@ -920,7 +951,8 @@ export function Counsel({ db, S, add, del, upd, focus }) {
 }
 
 /* 메모하기: 날짜를 골라 쓰기. 왼쪽 목록 / 오른쪽 입력·수정 */
-export function Memos({ db, add, del, upd, focus }) {
+export function Memos({ db, del, upd, load, focus }) {
+  const busy = useRef(false);
   const fr = db.memos.find((m) => m.id === focus?.id);
   const [sel, setSel] = useState(fr?.id ?? null);
   const cur = db.memos.find((m) => m.id === sel);
@@ -948,17 +980,25 @@ export function Memos({ db, add, del, upd, focus }) {
         <button style={{ marginTop: 10 }} onClick={() => setSel(null)}>+ 새 메모 쓰기</button>
       </div>
       {cur && edit ? (
-        <form key={cur.id} onSubmit={(e) => { e.preventDefault(); upd('memos', cur.id, edit); }}>
+        <form key={cur.id} onSubmit={(e) => e.preventDefault()} onBlur={(e) => {
+          if (!leaving(e)) return;
+          if (edit.date !== memoDate(cur) || (edit.title ?? '') !== (cur.title ?? '') || edit.content !== (cur.content ?? '')) upd('memos', cur.id, edit);
+        }}>
           {fields(edit, setEdit)}
           <div className="actions">
             <button type="button" className="danger" onClick={() => { del('memos', cur.id, `「${cur.title || '제목 없음'}」 메모를 삭제할까요?`); setSel(null); }}>삭제</button>
-            <button>수정 저장</button>
           </div>
         </form>
       ) : (
-        <form onSubmit={(e) => { e.preventDefault(); if (f.content.trim() || f.title.trim()) { add('memos', f); setF({ ...f, title: '', content: '' }); } }}>
+        <form onSubmit={(e) => e.preventDefault()} onBlur={async (e) => {
+          if (!leaving(e) || busy.current || !(f.content.trim() || f.title.trim())) return;
+          busy.current = true;
+          const id = await createRow('memos', f, load);
+          busy.current = false;
+          if (id) { setSel(id); setEdit({ date: f.date, title: f.title, content: f.content }); setF({ date: f.date, title: '', content: '' }); }
+        }}>
           {fields(f, setF)}
-          <button>저장</button>
+          <p className="hint" style={{ margin: '8px 0 0' }}>쓰다가 칸을 벗어나면 자동으로 저장됩니다.</p>
         </form>
       )}
     </div>
