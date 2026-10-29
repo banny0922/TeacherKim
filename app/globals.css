@@ -727,3 +727,41 @@ table.grades tr>td:first-child,table.grades tr>td:nth-child(2){cursor:pointer}
 /* 평가 이름이 길면 줄바꿈해서 모두 보인다 */
 textarea.hname{display:block;width:100%;max-width:130px;margin:0 auto 2px;text-align:center;border:1px solid transparent;background:transparent;font-weight:600;font-size:14px;line-height:1.3;padding:2px 4px;resize:none;overflow:hidden;field-sizing:content;word-break:keep-all;overflow-wrap:anywhere}
 textarea.hname:hover{border-color:var(--line);background:#fff}
+
+/* 주간 표 일정 칸: 체크박스 목록 */
+.evlist{margin:6px;display:flex;flex-direction:column;gap:3px}
+.evitem{display:flex;align-items:center;gap:4px;padding:2px 4px;border:1.5px solid #cdbff0;border-radius:8px;background:#fff}
+.evitem input[type=checkbox]{flex:0 0 auto;width:17px;height:17px;margin:0;accent-color:#1f4fbf;cursor:pointer}
+.evitem input.evtext{flex:1;min-width:0;border:0;background:transparent;padding:3px 2px;margin:0;font-size:13px;font-weight:800;color:#1f4fbf}
+.evitem input.evtext:focus{box-shadow:none;outline:none;background:#f4f7ff}
+.evitem .evdel{flex:0 0 auto;width:20px;height:20px;padding:0;margin:0;border:0;border-radius:50%;background:transparent;color:#b7b2d3;font-size:16px;line-height:1;cursor:pointer}
+.evitem .evdel:hover{background:#fde8e8;color:#c0392b}
+.evitem.done{background:#f6f6fa;border-color:#e0e0ea}
+.evitem.done input.evtext{font-weight:600;color:#9a9db3}
+input.evadd{width:100%;box-sizing:border-box;margin:0;padding:5px 8px;border:1.5px dashed #cdbff0;border-radius:8px;background:#fff;font-size:13px}
+input.evadd::placeholder{color:#b7b2d3}
+.cal .ev.evdone,.cal .ev.evdone span,.week .ev.evdone,.week .ev.evdone span{font-weight:500;color:#9a9db3}
+
+/* 일정 글씨는 줄바꿈해서 전부 보인다 */
+.evitem{align-items:flex-start}
+.evitem input[type=checkbox]{margin-top:5px}
+.evitem .evdel{margin-top:2px}
+textarea.evtext{flex:1;min-width:0;border:0;background:transparent;padding:3px 2px;margin:0;font-size:13px;line-height:1.35;font-weight:800;color:#1f4fbf;resize:none;overflow:hidden;field-sizing:content;font-family:inherit;overflow-wrap:anywhere}
+textarea.evtext:focus{box-shadow:none;outline:none;background:#f4f7ff}
+.evitem.done textarea.evtext{font-weight:600;color:#9a9db3}
+.evitem{position:relative;padding-right:4px}
+.evitem .evdel{position:absolute;right:2px;top:2px;margin:0;opacity:0;background:#fff}
+.evitem:hover .evdel,.evitem:focus-within .evdel{opacity:1}
+@media(hover:none){.evitem .evdel{opacity:.7}}
+textarea.evtext{word-break:keep-all;overflow-wrap:break-word}
+
+/* 일정 항목: 한 칸에 한 줄씩 (주간 표의 기본 칸 높이를 따르지 않는다) */
+table.week td .evitem textarea.evtext{min-height:0;height:auto;padding:3px 2px;line-height:1.35;border-radius:0}
+table.week td .evitem{min-height:0;align-items:center}
+table.week td .evitem input[type=checkbox]{margin-top:0}
+table.week td input.evadd{min-height:0;height:auto;padding:5px 8px}
+
+/* 일정 항목에는 박스를 치지 않고, '+ 일정 추가' 칸에만 박스 */
+.evitem,.evitem.done{border:0;background:transparent;padding:1px 2px}
+.evitem .evdel{background:transparent}
+.evitem:hover .evdel{background:#fff}

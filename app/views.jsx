@@ -51,7 +51,7 @@ export function dayItems(db, d, extraOnly = false) {
   const one = (t) => String(t ?? '').split(/\r?\n/).filter(Boolean).join(' · ');
   const out = [];
   if (!extraOnly) {
-    db.events.filter((e) => e.date === d).forEach((e) => out.push({ k: 'e' + e.id, Icon: CalendarDays, color: '#e0607a', text: one(e.title) }));
+    db.events.filter((e) => e.date === d).forEach((e) => out.push({ k: 'e' + e.id, Icon: CalendarDays, color: '#e0607a', text: one(e.title), done: !!e.done }));
     db.period_notes.filter((n) => n.date === d && n.text?.trim()).sort((a, b) => a.period - b.period).forEach((n) => out.push({ k: 'p' + n.id, Icon: PenLine, color: '#7b7e90', text: `${n.period}교시 ${one(n.text)}` }));
   }
   db.checklists.filter((c) => ckDate(c) === d).forEach((c) => out.push({ k: 'c' + c.id, tab: 'checklist', id: c.id, Icon: ListChecks, color: '#6c6cc9', text: c.title || '체크리스트' }));
@@ -65,8 +65,8 @@ function DayItems({ items, max, go }) {
   const shown = max ? items.slice(0, max) : items;
   return (
     <>
-      {shown.map(({ k, tab, id, Icon, color, text }) => (
-        <div key={k} className={`ev it ${tab ? 'go' : ''} ${Icon === CalendarDays ? 'isev' : ''}`} title={text} onClick={tab && go ? (e) => { e.stopPropagation(); go(tab, id); } : undefined}><Icon size={12} strokeWidth={2.4} color={color} /><span>{text}</span></div>
+      {shown.map(({ k, tab, id, Icon, color, text, done }) => (
+        <div key={k} className={`ev it ${tab ? 'go' : ''} ${Icon === CalendarDays ? 'isev' : ''} ${done ? 'evdone' : ''}`} title={text} onClick={tab && go ? (e) => { e.stopPropagation(); go(tab, id); } : undefined}><Icon size={12} strokeWidth={2.4} color={color} /><span>{text}</span></div>
       ))}
       {max && items.length > max && <div className="more">+{items.length - max}개 더</div>}
     </>
@@ -336,14 +336,36 @@ function Week({ sel, db, add, del, uid, load, go }) {
   const [editCell, setEditCell] = useState(null); // 시간표를 이 날만 바꾸는 중인 칸 '날짜|교시'
   const start = new Date(sel + 'T00:00:00'); start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(d.getDate() + i); return d.toLocaleDateString('sv'); });
-  // 하루 일정은 한 칸(최대 3줄)에 자유롭게 입력: 그날의 기존 일정을 지우고 한 건으로 다시 저장
-  const evText = (date) => db.events.filter((e) => e.date === date).map((e) => e.title).join('\n');
-  const saveEv = async (date, text) => {
-    if (text === evText(date)) return;
-    if (!text.trim() && !confirm(`${date} 일정을 모두 지울까요?`)) { load(); return; }
-    const r = await sb.from('events').delete().eq('date', date);
-    const { error } = r.error ? r : text.trim() ? await sb.from('events').insert({ date, title: text }) : r;
-    if (error) alert(error.message); else saved();
+  // 하루 일정은 '한 줄 = 한 항목' 목록. 항목마다 체크박스(완료 표시)가 있고, 글씨를 고치면 칸을 벗어날 때 자동 저장
+  const evItems = (date) => db.events.filter((e) => e.date === date).flatMap((e) => String(e.title ?? '').split(NLX).map((t, i) => ({ row: e, i, text: t.trim(), done: !!e.done })).filter((x) => x.text));
+  const evError = (error) => alert(/done/.test(error.message) ? '완료 표시를 저장할 칸이 아직 없습니다. Supabase SQL Editor에서 안내해 드린 SQL을 한 번 실행해 주세요.' : error.message);
+  const changeEv = async (it, patch) => {
+    const row = it.row;
+    const lines = String(row.title ?? '').split(NLX).map((t) => t.trim());
+    const dead = patch.remove || (patch.text !== undefined && !patch.text.trim());
+    let r;
+    if (lines.filter(Boolean).length <= 1) {
+      // 한 줄짜리 기록: 그 기록을 그대로 고치거나 지운다
+      r = dead ? await sb.from('events').delete().eq('id', row.id)
+        : await sb.from('events').update({ ...(patch.text !== undefined ? { title: patch.text.trim() } : {}), ...(patch.done !== undefined ? { done: patch.done } : {}) }).eq('id', row.id);
+    } else {
+      // 예전에 여러 줄이 한 기록으로 저장된 일정: 줄마다 별도 기록으로 나누면서 고친다
+      const rows = [];
+      lines.forEach((t, i) => {
+        if (i !== it.i) { if (t) rows.push({ date: row.date, title: t }); return; }
+        if (dead) return;
+        rows.push({ date: row.date, title: patch.text !== undefined ? patch.text.trim() : t, done: patch.done !== undefined ? patch.done : false });
+      });
+      r = await sb.from('events').delete().eq('id', row.id);
+      if (!r.error && rows.length) r = await sb.from('events').insert(rows);
+    }
+    if (r.error) evError(r.error); else saved();
+    load();
+  };
+  const addEv = async (date, text) => {
+    if (!text.trim()) return;
+    const { error } = await sb.from('events').insert({ date, title: text.trim() });
+    if (error) evError(error); else saved();
     load();
   };
   const slot = (date, period) => db.period_notes.find((n) => n.date === date && n.period === period)?.text ?? '';
@@ -425,7 +447,23 @@ function Week({ sel, db, add, del, uid, load, go }) {
               <th>일정</th>
               {days.slice(0, 5).map((d) => (
                 <td key={d} className={d === today() ? 'tdc' : ''}>
-                  <textarea className="evbox" key={evText(d)} rows="2" defaultValue={evText(d)} placeholder="일정 쓰기" onBlur={(e) => saveEv(d, e.target.value)} />
+                  <div className="evlist">
+                    {evItems(d).map((it, k) => (
+                      <div key={it.row.id + ':' + k} className={`evitem ${it.done ? 'done' : ''}`}>
+                        <input type="checkbox" checked={it.done} title="완료 표시" onChange={(e) => changeEv(it, { done: e.target.checked })} />
+                        <textarea className="evtext" rows="1" key={it.text + it.done} defaultValue={it.text}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                          onBlur={(e) => {
+                            const t = e.target.value.trim();
+                            if (t === it.text) return;
+                            if (!t && !confirm('이 일정을 지울까요?')) { e.target.value = it.text; return; }
+                            changeEv(it, { text: t });
+                          }} />
+                        <button type="button" className="evdel" title="일정 삭제" onClick={() => { if (confirm('「' + it.text + '」 일정을 지울까요?')) changeEv(it, { remove: true }); }}>×</button>
+                      </div>
+                    ))}
+                    <input className="evadd" placeholder="+ 일정 추가" onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} onBlur={(e) => { const t = e.target.value; e.target.value = ''; addEv(d, t); }} />
+                  </div>
                   {dayItems(db, d, true).length > 0 && (
                     <div className="evitems">
                       <small>다른 기록</small>

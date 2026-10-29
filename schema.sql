@@ -54,3 +54,6 @@ drop policy if exists "own rows" on archives;
 create policy "own rows" on archives for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 grant select, insert, update, delete on archives to authenticated;
 notify pgrst, 'reload schema';
+-- 일정 완료 표시(체크박스)
+alter table events add column if not exists done boolean default false;
+notify pgrst, 'reload schema';
