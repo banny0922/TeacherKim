@@ -1087,6 +1087,15 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
   const tests = db.tests.filter((t) => t.subject === cur).sort((a, b) => tDate(a).localeCompare(tDate(b)));
   const newDate = today();
   // 비고: 점수 칸마다 하나씩 (scores.note)
+  const gLeft = useRef(null);
+  const gBox = useRef(null);
+  // 표가 화면 아래까지만 차지하게(페이지 스크롤 없이 표 안에서만 스크롤)
+  useEffect(() => {
+    const fit = () => { const el = gBox.current; if (el) el.style.maxHeight = Math.max(260, window.innerHeight - (el.getBoundingClientRect().top + window.scrollY) - 72) + 'px'; };
+    fit(); const t = setTimeout(fit, 150);
+    window.addEventListener('resize', fit);
+    return () => { clearTimeout(t); window.removeEventListener('resize', fit); };
+  });
   const [selRow, setSelRow] = useState(null); // 번호·이름을 눌러 선택한 학생 줄
   const [notePop, setNotePop] = useState(null); // 비고를 쓰는 중인 점수 칸 {tid, sid, x, y}
   const note = (tid, sid) => row(tid, sid)?.note ?? '';
@@ -1262,18 +1271,31 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
       {S.length === 0 ? <p>먼저 학급명렬에서 학생을 추가하세요.</p> : (
         <>
         {!db.tests.some((t) => t.subject === cur) ? <p style={{ color: 'var(--mute)' }}>「{cur}」 과목을 만들었습니다. 위쪽에서 <b>평가 이름</b>을 쓰고 <b>평가(열) 추가</b>를 누르면 이 표에 열이 생깁니다.</p> : null}
-        <div className="gradewrap">
-          <table className="grades"><tbody>
-            <tr><th style={{ width: 54 }}>번호</th><th style={{ width: 90 }}>이름</th>
-              {tests.map((t) => <th key={t.id}>
-                <textarea className="hname" rows="1" key={t.name} defaultValue={t.name} title="평가 이름 (눌러서 수정)" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } }} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== t.name && upd('tests', t.id, { name: e.target.value.trim() })} />
+        <div className="gsplit" ref={gBox} style={{ '--n': tests.length }}>
+          <div className="gl-b" ref={gLeft}>
+            <table className="grades gl"><tbody>
+              <tr className="ghead"><th>번호</th><th>이름</th></tr>
+              {ordered.map((s, i) => (
+                <Fragment key={s.id}>
+                  {i === cut && i > 0 && <tr className="gaprow"><td colSpan="2" /></tr>}
+                  <tr className={selRow === s.id ? 'rowsel' : ''} onClick={() => setSelRow(s.id)}><td className="c">{numOf(s, S.indexOf(s))}</td><td className="c">{s.name}</td></tr>
+                </Fragment>
+              ))}
+              <tr className="avgrow"><td className="c">전체</td><td className="c">평균</td></tr>
+            </tbody></table>
+          </div>
+          <div className="gr-b" onScroll={(e) => { const t = e.currentTarget; if (gLeft.current) gLeft.current.scrollTop = t.scrollTop; }}>
+            <table className="grades gr"><colgroup>{tests.map((t) => <col key={t.id} style={{ width: 120 }} />)}<col /></colgroup><tbody>
+              <tr className="ghead">
+            {tests.map((t) => <th key={t.id}>
+                  <textarea className="hname" rows="1" key={t.name} defaultValue={t.name} title="평가 이름 (눌러서 수정)" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } }} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== t.name && upd('tests', t.id, { name: e.target.value.trim() })} />
                 <input type="date" className="hdate" key={t.date ?? ''} defaultValue={t.date ?? ''} title="평가 날짜 (눌러서 수정)" onBlur={(e) => e.target.value !== (t.date ?? '') && upd('tests', t.id, { date: e.target.value || null })} /><button className="tdel" title="이 평가(열) 삭제 — 점수도 함께 지워집니다" onClick={() => del('tests', t.id, `${cur} 「${t.name}」 평가(열)를 삭제할까요?` + NLX + '모든 학생의 이 평가 점수가 함께 지워집니다.')}><Trash2 size={13} /></button></th>)}
-            </tr>
-            {ordered.map((s, i) => (
-              <Fragment key={s.id}>
-                {i === cut && i > 0 && <tr className="gaprow"><td colSpan={2 + tests.length} /></tr>}
-                <tr className={selRow === s.id ? 'rowsel' : ''} onClick={() => setSelRow(s.id)}><td className="c">{numOf(s, S.indexOf(s))}</td><td className="c">{s.name}</td>
-                  {tests.map((t) => {
+          <th className="fill" /></tr>
+              {ordered.map((s, i) => (
+                <Fragment key={s.id}>
+                  {i === cut && i > 0 && <tr className="gaprow"><td colSpan={tests.length + 1} /></tr>}
+                  <tr className={selRow === s.id ? 'rowsel' : ''} onClick={() => setSelRow(s.id)} onFocus={() => setSelRow(s.id)}>
+                    {tests.map((t) => {
                     const nt = note(t.id, s.id);
                     return (
                       <td key={t.id} className={`c scell ${nt ? 'hasnote' : ''}`} title={nt ? '비고: ' + nt : undefined}>
@@ -1282,11 +1304,13 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
                       </td>
                     );
                   })}
-                </tr>
-              </Fragment>
-            ))}
-            <tr className="avgrow"><td className="c" colSpan="2">전체평균</td>{tests.map((t) => <td key={t.id} className="c">{avg(t.id)}</td>)}</tr>
-          </tbody></table>
+                    <td className="fill" />
+                  </tr>
+                </Fragment>
+              ))}
+              <tr className="avgrow">{tests.map((t) => <td key={t.id} className="c">{avg(t.id)}</td>)}<td className="fill" /></tr>
+            </tbody></table>
+          </div>
         </div>
         {notePop && (
           <div className="notepop" style={{ left: Math.max(8, notePop.x), top: notePop.y }}>
@@ -1425,7 +1449,7 @@ export function Archive({ db, load }) {
                 {tests.map((t) => { const r = sc[t.id + '|' + s.id]; return <td key={t.id} className="c" title={r?.note ? '비고: ' + r.note : undefined}>{show(r)}{r?.note ? <sup title={r.note}> ●</sup> : null}</td>; })}
               </tr>
             ))}
-            <tr className="avgrow"><td className="c" colSpan="2">전체평균</td>{tests.map((t) => <td key={t.id} className="c">{avg(t)}</td>)}</tr>
+            <tr className="avgrow"><td className="c">전체</td><td className="c">평균</td>{tests.map((t) => <td key={t.id} className="c">{avg(t)}</td>)}</tr>
           </tbody></table></div>
           <p className="hint">● 표시가 있는 칸은 비고가 있습니다(마우스를 올리면 보입니다).</p>
         </>

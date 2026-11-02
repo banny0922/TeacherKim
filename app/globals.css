@@ -273,7 +273,26 @@ table.grades td input.hi{color:#d4301f}
 table.grades td input.lo{color:#2f6fd6}
 table.grades td input.mk{color:#2f6fd6;font-weight:700}
 table.grades th small{font-weight:400;color:var(--mute)}
-table.grades tr.avgrow td{background:#f4f4f7;font-weight:700;color:#2f6a8a}
+table.grades tr.avgrow>td:nth-child(n){background:#f4f4f7;font-weight:700;color:#2f6a8a}
+/* 번호·이름 칸 고정: 평가(열)가 늘어나면 가로 스크롤, 이름은 항상 보인다 */
+/* 성적: 왼쪽(번호·이름)은 고정, 오른쪽(점수)만 가로로 밀린다. 세로 스크롤도 표 안에서, 맨 윗줄은 고정 */
+.gsplit{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:minmax(0,1fr);border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#fff}
+.gl-b{border-right:2px solid var(--line)}
+.gl-b{overflow:hidden}
+.gl-b table{margin:0 0 17px}
+.gr-b{overflow-x:scroll;overflow-y:auto}
+.gsplit table{margin:0}
+.gsplit table.gr{table-layout:fixed;width:100%;min-width:calc(var(--n) * 120px + 12px)}
+.gsplit table.gr.hd{min-width:calc(var(--n) * 120px + 24px)}
+table.grades th.fill{border-right:0}
+table.grades.gr td.fill{padding:0}
+table.grades{border-collapse:separate;border-spacing:0}
+table.grades td,table.grades th{border-width:0 1px 1px 0;box-sizing:border-box}
+table.grades tr:not(.gaprow):not(.ghead){height:46px}
+table.grades tr.ghead>*{height:100px;background:#f1f2f8;position:sticky;top:0;z-index:3}
+table.grades.gl{width:144px;min-width:0}
+table.grades.gl tr>*:nth-child(1){width:54px;min-width:54px}
+table.grades.gl tr>*:nth-child(2){width:90px;min-width:90px}
 
 .sheets button{flex:none;padding:6px 22px}
 
@@ -690,9 +709,6 @@ textarea.evbox::placeholder{font-weight:400;color:#9aa0b5}
   .weekflex table.week{min-width:700px}
   /* 표 */
   .gradewrap{-webkit-overflow-scrolling:touch}
-  table.grades tr:not(.avgrow):not(.gaprow)>*:nth-child(1){position:sticky;left:0;z-index:2;background:#fff}
-  table.grades tr:not(.avgrow):not(.gaprow)>*:nth-child(2){position:sticky;left:54px;z-index:2;background:#fff}
-  table.grades th:nth-child(-n+2){background:#f1f2f8!important}
   .rostertwo{display:block;overflow-x:auto}
   .rostertwo table{min-width:540px;margin-bottom:12px}
   /* 시간표 */
@@ -711,18 +727,18 @@ textarea.evbox::placeholder{font-weight:400;color:#9aa0b5}
   .numtabs button{flex:0 0 auto}
 }
 @media(max-width:700px){
-  table.grades tr>*:nth-child(1){min-width:40px;width:40px;white-space:nowrap}
-  table.grades tr>*:nth-child(2){min-width:62px;width:62px;white-space:nowrap}
-  table.grades tr:not(.avgrow):not(.gaprow)>*:nth-child(2){left:40px}
+  table.grades.gl{width:auto}
+  table.grades.gl tr>*:nth-child(1){min-width:40px;width:40px}
+  table.grades.gl tr>*:nth-child(2){min-width:62px;width:62px}
   table.grades td.c:nth-child(-n+2){font-size:13px}
-  .gradewrap table th,.gradewrap table td{white-space:nowrap}
+  .gradewrap table th,.gradewrap table td,.gsplit table th,.gsplit table td{white-space:nowrap}
 }
 
 /* 성적 입력: 점수를 쓰는 줄 전체를 하늘색으로 */
 table.grades tr:focus-within>td,table.grades tr.rowsel>td{background:#dff1fb!important}
 table.grades tr:focus-within>td input:not(.noteedit),table.grades tr.rowsel>td input:not(.noteedit){background:transparent}
-table.grades tr:focus-within>td:first-child,table.grades tr:focus-within>td:nth-child(2),table.grades tr.rowsel>td:first-child,table.grades tr.rowsel>td:nth-child(2){font-weight:700;color:#1d5f86}
-table.grades tr>td:first-child,table.grades tr>td:nth-child(2){cursor:pointer}
+table.grades.gl tr.rowsel>td{font-weight:700;color:#1d5f86}
+table.grades.gl tr>td{cursor:pointer}
 
 /* 평가 이름이 길면 줄바꿈해서 모두 보인다 */
 textarea.hname{display:block;width:100%;max-width:130px;margin:0 auto 2px;text-align:center;border:1px solid transparent;background:transparent;font-weight:600;font-size:14px;line-height:1.3;padding:2px 4px;resize:none;overflow:hidden;field-sizing:content;word-break:keep-all;overflow-wrap:anywhere}
@@ -765,3 +781,16 @@ table.week td input.evadd{min-height:0;height:auto;padding:5px 8px}
 .evitem,.evitem.done{border:0;background:transparent;padding:1px 2px}
 .evitem .evdel{background:transparent}
 .evitem:hover .evdel{background:#fff}
+
+/* 성적 표 스크롤바: 연한 색의 얇은 막대 */
+.gr-b::-webkit-scrollbar{width:12px;height:12px}
+.gr-b::-webkit-scrollbar-track,.gr-b::-webkit-scrollbar-corner{background:#f6f6fa}
+.gr-b::-webkit-scrollbar-thumb{background:#d3d2e6;border-radius:999px;border:3px solid #f6f6fa}
+.gr-b::-webkit-scrollbar-thumb:hover{background:#b9b8d6}
+@supports not selector(::-webkit-scrollbar){.gr-b{scrollbar-width:thin;scrollbar-color:#d3d2e6 #f6f6fa}}
+
+/* 상담기록: 버튼 줄을 표 밖(아래)에 띄워서, 왼쪽 목록과 오른쪽 입력 표의 아래끝이 항상 같게 */
+.two.counsel{padding-bottom:52px}
+.counsel>div:first-child{padding-bottom:0}
+.counsel>form{position:relative;margin-bottom:0}
+.counsel>form .actions{position:absolute;left:0;right:0;top:100%;margin-top:10px;height:auto}
