@@ -938,33 +938,39 @@ export function Counsel({ db, S, del, upd, load, focus }) {
     setPhoto(null); saved();
   };
   const mine = db.notes.filter((n) => n.student_id === stu?.id).sort(dateDesc);
-  // 상담 사진 1장: 기록을 열 때 그 기록 것만 가져온다. 아직 저장 전이면 들고 있다가 첫 저장 때 함께 넣는다
+  // 상담 사진 1장: 기록을 열 때 그 기록 것만 가져온다. 기록이 만들어져 있으면(editId) 사진이 바뀔 때마다 알아서 저장한다
+  // (칸을 벗어나며 기록이 막 만들어지는 중에 사진을 골라도 놓치지 않도록, 사진 저장은 effect 하나로 처리)
   const [nPhoto, setNPhoto] = useState(null);
+  const dbPhoto = useRef(null); // DB에 들어 있는 사진
   const openNote = (n) => {
-    setEditId(n?.id ?? null); setNPhoto(null);
-    if (n) sb.from('notes').select('photo').eq('id', n.id).maybeSingle().then(({ data }) => setNPhoto(data?.photo ?? null));
+    setEditId(n?.id ?? null); setNPhoto(null); dbPhoto.current = null;
+    if (n) sb.from('notes').select('photo').eq('id', n.id).maybeSingle().then(({ data }) => { dbPhoto.current = data?.photo ?? null; setNPhoto(dbPhoto.current); });
   };
+  useEffect(() => {
+    if (!editId) { if (nPhoto) persist(); return; } // 글 없이 사진만 골라도 기록을 만들어 저장
+    if (nPhoto === dbPhoto.current) return;
+    const v = nPhoto;
+    sb.from('notes').update({ photo: v }).eq('id', editId).then(({ error }) => {
+      if (error) return photoError(error.message.replace('students', 'notes'));
+      dbPhoto.current = v; saved();
+    });
+  }, [editId, nPhoto]);
+  const fill = (n) => { openNote(n); setDate(n.date); setTarget(n.target ?? '학생'); setMethod(n.method ?? '면담'); setText(n.text); };
+  // 열 때(그리고 학생을 바꿀 때) 가장 최근 상담 기록(달력에서 눌러 온 경우 그 기록)을 기본으로 펼친다
+  useEffect(() => {
+    const n = fr?.student_id === stu?.id ? fr : mine[0];
+    if (n) fill(n);
+  }, [stu?.id]);
   const pickNotePhoto = async (file) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) return alert('사진(이미지) 파일을 선택하세요.');
-    try {
-      const url = await resizePhoto(file, 1200, 400000);
-      if (editId) {
-        const { error } = await sb.from('notes').update({ photo: url }).eq('id', editId);
-        if (error) return photoError(error.message.replace('students', 'notes'));
-        saved();
-      }
-      setNPhoto(url);
-    } catch (e) { alert(e.message); }
+    try { setNPhoto(await resizePhoto(file, 1200, 400000)); } catch (e) { alert(e.message); }
   };
-  const removeNotePhoto = async () => {
-    if (editId) { const { error } = await sb.from('notes').update({ photo: null }).eq('id', editId); if (error) return photoError(error.message); saved(); }
-    setNPhoto(null);
-  };
+  const removeNotePhoto = () => setNPhoto(null);
   // 상담 내용은 쓰다가 칸을 벗어나면(또는 대상·방법을 고르면) 자동 저장. 처음이면 새 기록을 만들고, 이후에는 그 기록을 고친다
   const persist = async (over = {}) => {
     const row = { date, target, method, text, ...over };
-    if (!row.text.trim()) return;
+    if (!row.text.trim() && !nPhoto) return;
     if (editId) {
       const c = db.notes.find((x) => x.id === editId);
       if (c && (c.date !== row.date || (c.target ?? '') !== row.target || (c.method ?? '') !== row.method || (c.text ?? '') !== row.text)) upd('notes', editId, row);
@@ -972,7 +978,7 @@ export function Counsel({ db, S, del, upd, load, focus }) {
       busy.current = true;
       const id = await createRow('notes', { ...row, student_id: stu.id, ...(nPhoto ? { photo: nPhoto } : {}) }, load);
       busy.current = false;
-      if (id) setEditId(id);
+      if (id) { dbPhoto.current = nPhoto; setEditId(id); }
     }
   };
   const pick = (opts, val, set, key) => opts.map((o) => <td key={o} className={`pick ${val === o ? 'on' : ''}`} onClick={() => { set(o); persist({ [key]: o }); }}>{o}</td>);
@@ -983,6 +989,7 @@ export function Counsel({ db, S, del, upd, load, focus }) {
         <select value={stu.id} onChange={(e) => { setSid(e.target.value); openNote(null); setText(''); }}>
           {S.map((s, i) => <option key={s.id} value={s.id}>{numOf(s, i)}번 {s.name}</option>)}
         </select>
+        <button type="button" className="newnote" onClick={() => { openNote(null); setText(''); setDate(today()); }}>+ 새로 쓰기</button>
       </div>
       <div className="two counsel">
         <div>
@@ -998,7 +1005,7 @@ export function Counsel({ db, S, del, upd, load, focus }) {
           </tbody></table>
           <div className="history">
             {mine.map((n) => (
-              <div key={n.id} className={`note ${n.id === editId ? 'on' : ''} ${n.date === today() ? 'tdr' : ''}`} title="누르면 오른쪽에서 수정할 수 있습니다" onClick={() => { openNote(n); setDate(n.date); setTarget(n.target ?? '학생'); setMethod(n.method ?? '면담'); setText(n.text); }}>
+              <div key={n.id} className={`note ${n.id === editId ? 'on' : ''} ${n.date === today() ? 'tdr' : ''}`} title="누르면 오른쪽에서 수정할 수 있습니다" onClick={() => fill(n)}>
                 <b>{n.date}</b> · {n.target} · {n.method} <Del onClick={(e) => { e.stopPropagation(); del('notes', n.id, `${n.date} 상담 기록을 삭제할까요?`); if (editId === n.id) { openNote(null); setText(''); } }} />
                 <div style={{ whiteSpace: 'pre-wrap' }}>{n.text}</div>
               </div>
@@ -1019,9 +1026,6 @@ export function Counsel({ db, S, del, upd, load, focus }) {
               {nPhoto && <button type="button" className="x photodel" onClick={removeNotePhoto}>사진 삭제</button>}
             </td></tr>
           </tbody></table>
-          <div className="actions">
-            {editId ? <button type="button" onClick={() => { openNote(null); setText(''); setDate(today()); }}>새로 쓰기</button> : <span />}
-          </div>
         </form>
       </div>
     </>

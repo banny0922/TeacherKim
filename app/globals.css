@@ -794,3 +794,6 @@ table.week td input.evadd{min-height:0;height:auto;padding:5px 8px}
 .counsel>div:first-child{padding-bottom:0}
 .counsel>form{position:relative;margin-bottom:0}
 .counsel>form .actions{position:absolute;left:0;right:0;top:100%;margin-top:10px;height:auto}
+
+.searchbar button.newnote{height:42px;margin:0;padding:0 22px;border-radius:999px;background:var(--ac);border-color:var(--ac);color:#fff;font-size:15px;font-weight:700}
+.searchbar button.newnote:hover{background:var(--ac2)}
