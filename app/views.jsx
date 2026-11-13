@@ -938,47 +938,55 @@ export function Counsel({ db, S, del, upd, load, focus }) {
     setPhoto(null); saved();
   };
   const mine = db.notes.filter((n) => n.student_id === stu?.id).sort(dateDesc);
-  // 상담 사진 1장: 기록을 열 때 그 기록 것만 가져온다. 기록이 만들어져 있으면(editId) 사진이 바뀔 때마다 알아서 저장한다
-  // (칸을 벗어나며 기록이 막 만들어지는 중에 사진을 골라도 놓치지 않도록, 사진 저장은 effect 하나로 처리)
-  const [nPhoto, setNPhoto] = useState(null);
-  const dbPhoto = useRef(null); // DB에 들어 있는 사진
+  // 상담 사진 최대 5장: 기존 photo 칸(글자)에 JSON 목록으로 넣는다(예전 1장짜리 값도 그대로 읽힘). 기록을 열 때 그 기록 것만 가져온다
+  // 기록이 있으면(editId) 사진이 바뀔 때마다 알아서 저장한다(칸을 벗어나며 기록이 만들어지는 중에 골라도 놓치지 않도록 effect 하나로 처리)
+  const MAXP = 5;
+  const enc = (a) => (a.length ? JSON.stringify(a) : null);
+  const dec = (v) => (!v ? [] : v[0] === '[' ? JSON.parse(v) : [v]);
+  const [nPhotos, setNPhotos] = useState([]);
+  const [big, setBig] = useState(null);
+  const dbPhoto = useRef(null); // DB에 들어 있는 사진(enc 형태)
   const openNote = (n) => {
-    setEditId(n?.id ?? null); setNPhoto(null); dbPhoto.current = null;
-    if (n) sb.from('notes').select('photo').eq('id', n.id).maybeSingle().then(({ data }) => { dbPhoto.current = data?.photo ?? null; setNPhoto(dbPhoto.current); });
+    setEditId(n?.id ?? null); setNPhotos([]); dbPhoto.current = null;
+    if (n) sb.from('notes').select('photo').eq('id', n.id).maybeSingle().then(({ data }) => { const a = dec(data?.photo); dbPhoto.current = enc(a); setNPhotos(a); });
   };
   useEffect(() => {
-    if (!editId) { if (nPhoto) persist(); return; } // 글 없이 사진만 골라도 기록을 만들어 저장
-    if (nPhoto === dbPhoto.current) return;
-    const v = nPhoto;
+    if (!editId) { if (nPhotos.length) persist(); return; } // 글 없이 사진만 골라도 기록을 만들어 저장
+    const v = enc(nPhotos);
+    if (v === dbPhoto.current) return;
     sb.from('notes').update({ photo: v }).eq('id', editId).then(({ error }) => {
       if (error) return photoError(error.message.replace('students', 'notes'));
       dbPhoto.current = v; saved();
     });
-  }, [editId, nPhoto]);
+  }, [editId, nPhotos]);
+  const pickNotePhotos = async (files) => {
+    const list = Array.from(files ?? []).filter((f) => f.type.startsWith('image/'));
+    if (!list.length) return;
+    const room = MAXP - nPhotos.length;
+    if (list.length > room) alert(`사진은 최대 ${MAXP}장까지 넣을 수 있어요.` + (room > 0 ? ` 앞의 ${room}장만 넣습니다.` : ''));
+    try {
+      const urls = await Promise.all(list.slice(0, Math.max(0, room)).map((f) => resizePhoto(f, 1000, 250000)));
+      setNPhotos((p) => [...p, ...urls].slice(0, MAXP));
+    } catch (e) { alert(e.message); }
+  };
   const fill = (n) => { openNote(n); setDate(n.date); setTarget(n.target ?? '학생'); setMethod(n.method ?? '면담'); setText(n.text); };
   // 열 때(그리고 학생을 바꿀 때) 가장 최근 상담 기록(달력에서 눌러 온 경우 그 기록)을 기본으로 펼친다
   useEffect(() => {
     const n = fr?.student_id === stu?.id ? fr : mine[0];
     if (n) fill(n);
   }, [stu?.id]);
-  const pickNotePhoto = async (file) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) return alert('사진(이미지) 파일을 선택하세요.');
-    try { setNPhoto(await resizePhoto(file, 1200, 400000)); } catch (e) { alert(e.message); }
-  };
-  const removeNotePhoto = () => setNPhoto(null);
   // 상담 내용은 쓰다가 칸을 벗어나면(또는 대상·방법을 고르면) 자동 저장. 처음이면 새 기록을 만들고, 이후에는 그 기록을 고친다
   const persist = async (over = {}) => {
     const row = { date, target, method, text, ...over };
-    if (!row.text.trim() && !nPhoto) return;
+    if (!row.text.trim() && !nPhotos.length) return;
     if (editId) {
       const c = db.notes.find((x) => x.id === editId);
       if (c && (c.date !== row.date || (c.target ?? '') !== row.target || (c.method ?? '') !== row.method || (c.text ?? '') !== row.text)) upd('notes', editId, row);
     } else if (!busy.current) {
       busy.current = true;
-      const id = await createRow('notes', { ...row, student_id: stu.id, ...(nPhoto ? { photo: nPhoto } : {}) }, load);
+      const id = await createRow('notes', { ...row, student_id: stu.id, ...(nPhotos.length ? { photo: enc(nPhotos) } : {}) }, load);
       busy.current = false;
-      if (id) { dbPhoto.current = nPhoto; setEditId(id); }
+      if (id) { dbPhoto.current = enc(nPhotos); setEditId(id); }
     }
   };
   const pick = (opts, val, set, key) => opts.map((o) => <td key={o} className={`pick ${val === o ? 'on' : ''}`} onClick={() => { set(o); persist({ [key]: o }); }}>{o}</td>);
@@ -1019,11 +1027,21 @@ export function Counsel({ db, S, del, upd, load, focus }) {
             <tr><th>방법</th>{pick(['면담', '전화', '문자/인터넷'], method, setMethod, 'method')}</tr>
             <tr><th className="tall">상담<br />내용</th><td colSpan="3" className="body"><textarea value={text} onChange={(e) => setText(e.target.value)} onBlur={() => persist()} placeholder="쓰다가 칸을 벗어나면 자동으로 저장됩니다" /></td></tr>
             <tr><th>사진</th><td colSpan="3">
-              <label className="photobox" title={nPhoto ? '눌러서 사진 바꾸기' : '눌러서 사진 1장 넣기'} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickNotePhoto(e.dataTransfer.files[0]); }}>
-                {nPhoto ? <img src={nPhoto} alt="상담 사진" style={{ height: 'auto', maxHeight: 260, objectFit: 'contain' }} /> : <span><Camera size={22} /><br />사진 넣기 (1장)<br />누르거나 끌어다 놓기</span>}
-                <input type="file" accept="image/*" onChange={(e) => { pickNotePhoto(e.target.files[0]); e.target.value = ''; }} />
-              </label>
-              {nPhoto && <button type="button" className="x photodel" onClick={removeNotePhoto}>사진 삭제</button>}
+              <div className="thumbs" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickNotePhotos(e.dataTransfer.files); }}>
+                {nPhotos.map((u, i) => (
+                  <div className="thumb" key={i}>
+                    <img src={u} alt={`상담 사진 ${i + 1}`} title="눌러서 크게 보기" onClick={() => setBig(u)} />
+                    <button type="button" className="thumbdel" title="사진 삭제" onClick={() => setNPhotos((p) => p.filter((_, k) => k !== i))}>×</button>
+                  </div>
+                ))}
+                {nPhotos.length < MAXP && (
+                  <label className="thumb add" title="눌러서 넣거나 끌어다 놓기 (여러 장 가능)">
+                    <span><Camera size={20} /><br />사진 {nPhotos.length}/{MAXP}</span>
+                    <input type="file" accept="image/*" multiple onChange={(e) => { pickNotePhotos(e.target.files); e.target.value = ''; }} />
+                  </label>
+                )}
+              </div>
+              {big && <div className="lightbox" onClick={() => setBig(null)}><img src={big} alt="상담 사진 크게 보기" /></div>}
             </td></tr>
           </tbody></table>
         </form>

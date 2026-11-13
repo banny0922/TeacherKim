@@ -797,3 +797,13 @@ table.week td input.evadd{min-height:0;height:auto;padding:5px 8px}
 
 .searchbar button.newnote{height:42px;margin:0;padding:0 22px;border-radius:999px;background:var(--ac);border-color:var(--ac);color:#fff;font-size:15px;font-weight:700}
 .searchbar button.newnote:hover{background:var(--ac2)}
+.thumbs{display:flex;flex-wrap:wrap;gap:8px}
+.thumb{position:relative;width:84px;height:84px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fafafa}
+.thumb img{display:block;width:100%;height:100%;object-fit:cover;cursor:zoom-in}
+.thumb.add{display:grid;place-items:center;border-style:dashed;cursor:pointer;color:var(--mute);font-size:12px;text-align:center;line-height:1.5;margin:0}
+.thumb.add:hover{background:#f4f4f9;color:var(--ac2)}
+.thumb.add input{display:none}
+button.thumbdel{position:absolute;top:2px;right:2px;width:22px;height:22px;margin:0;padding:0;border:0;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:15px;line-height:22px}
+button.thumbdel:hover{background:#c0392b}
+.lightbox{position:fixed;inset:0;z-index:200;display:grid;place-items:center;background:rgba(0,0,0,.8);cursor:zoom-out}
+.lightbox img{max-width:92vw;max-height:92vh;object-fit:contain;border-radius:6px}
