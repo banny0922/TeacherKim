@@ -56,7 +56,7 @@ function Planner({ uid, email }) {
   const [err, setErr] = useState('');
   const load = async () => {
     const keys = Object.keys(EMPTY);
-    const r = await Promise.all(keys.map((t) => sb.from(t).select(t === 'students' ? 'id,user_id,created_at,num,name,phone,parent_phone,parent_phone2' : '*').order('created_at')));
+    const r = await Promise.all(keys.map((t) => sb.from(t).select(t === 'students' ? 'id,user_id,created_at,num,name,phone,parent_phone,parent_phone2' : t === 'notes' ? 'id,user_id,created_at,date,student_id,target,method,text' : '*').order('created_at')));
     // tt_changes(그 날만 바뀐 시간표)는 SQL을 아직 안 돌렸어도 앱이 멈추지 않게 오류를 무시한다
     const bad = r.find((x, i) => x.error && keys[i] !== 'tt_changes' && keys[i] !== 'progress_photos' && keys[i] !== 'archives');
     if (bad) return setErr(bad.error.message);

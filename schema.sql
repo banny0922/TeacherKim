@@ -11,7 +11,7 @@ create table tests      (id uuid primary key default gen_random_uuid(), user_id 
 create table scores     (test_id uuid references tests on delete cascade, student_id uuid references students on delete cascade, user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
   score numeric, mark text, primary key (test_id, student_id));
 create table notes      (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
-  date date not null, student_id uuid references students on delete cascade, target text, method text, text text not null);
+  date date not null, student_id uuid references students on delete cascade, target text, method text, text text not null, photo text);
 create table timetable  (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),
   kind text not null, day int not null, period int not null, text text, unique (user_id, kind, day, period));
 create table checklists (id uuid primary key default gen_random_uuid(), user_id uuid not null default auth.uid() references auth.users on delete cascade, created_at timestamptz default now(),

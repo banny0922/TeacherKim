@@ -938,6 +938,29 @@ export function Counsel({ db, S, del, upd, load, focus }) {
     setPhoto(null); saved();
   };
   const mine = db.notes.filter((n) => n.student_id === stu?.id).sort(dateDesc);
+  // 상담 사진 1장: 기록을 열 때 그 기록 것만 가져온다. 아직 저장 전이면 들고 있다가 첫 저장 때 함께 넣는다
+  const [nPhoto, setNPhoto] = useState(null);
+  const openNote = (n) => {
+    setEditId(n?.id ?? null); setNPhoto(null);
+    if (n) sb.from('notes').select('photo').eq('id', n.id).maybeSingle().then(({ data }) => setNPhoto(data?.photo ?? null));
+  };
+  const pickNotePhoto = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return alert('사진(이미지) 파일을 선택하세요.');
+    try {
+      const url = await resizePhoto(file, 1200, 400000);
+      if (editId) {
+        const { error } = await sb.from('notes').update({ photo: url }).eq('id', editId);
+        if (error) return photoError(error.message.replace('students', 'notes'));
+        saved();
+      }
+      setNPhoto(url);
+    } catch (e) { alert(e.message); }
+  };
+  const removeNotePhoto = async () => {
+    if (editId) { const { error } = await sb.from('notes').update({ photo: null }).eq('id', editId); if (error) return photoError(error.message); saved(); }
+    setNPhoto(null);
+  };
   // 상담 내용은 쓰다가 칸을 벗어나면(또는 대상·방법을 고르면) 자동 저장. 처음이면 새 기록을 만들고, 이후에는 그 기록을 고친다
   const persist = async (over = {}) => {
     const row = { date, target, method, text, ...over };
@@ -947,7 +970,7 @@ export function Counsel({ db, S, del, upd, load, focus }) {
       if (c && (c.date !== row.date || (c.target ?? '') !== row.target || (c.method ?? '') !== row.method || (c.text ?? '') !== row.text)) upd('notes', editId, row);
     } else if (!busy.current) {
       busy.current = true;
-      const id = await createRow('notes', { ...row, student_id: stu.id }, load);
+      const id = await createRow('notes', { ...row, student_id: stu.id, ...(nPhoto ? { photo: nPhoto } : {}) }, load);
       busy.current = false;
       if (id) setEditId(id);
     }
@@ -957,7 +980,7 @@ export function Counsel({ db, S, del, upd, load, focus }) {
   return (
     <>
       <div className="searchbar">
-        <select value={stu.id} onChange={(e) => { setSid(e.target.value); setEditId(null); setText(''); }}>
+        <select value={stu.id} onChange={(e) => { setSid(e.target.value); openNote(null); setText(''); }}>
           {S.map((s, i) => <option key={s.id} value={s.id}>{numOf(s, i)}번 {s.name}</option>)}
         </select>
       </div>
@@ -975,8 +998,8 @@ export function Counsel({ db, S, del, upd, load, focus }) {
           </tbody></table>
           <div className="history">
             {mine.map((n) => (
-              <div key={n.id} className={`note ${n.id === editId ? 'on' : ''} ${n.date === today() ? 'tdr' : ''}`} title="누르면 오른쪽에서 수정할 수 있습니다" onClick={() => { setEditId(n.id); setDate(n.date); setTarget(n.target ?? '학생'); setMethod(n.method ?? '면담'); setText(n.text); }}>
-                <b>{n.date}</b> · {n.target} · {n.method} <Del onClick={(e) => { e.stopPropagation(); del('notes', n.id, `${n.date} 상담 기록을 삭제할까요?`); if (editId === n.id) { setEditId(null); setText(''); } }} />
+              <div key={n.id} className={`note ${n.id === editId ? 'on' : ''} ${n.date === today() ? 'tdr' : ''}`} title="누르면 오른쪽에서 수정할 수 있습니다" onClick={() => { openNote(n); setDate(n.date); setTarget(n.target ?? '학생'); setMethod(n.method ?? '면담'); setText(n.text); }}>
+                <b>{n.date}</b> · {n.target} · {n.method} <Del onClick={(e) => { e.stopPropagation(); del('notes', n.id, `${n.date} 상담 기록을 삭제할까요?`); if (editId === n.id) { openNote(null); setText(''); } }} />
                 <div style={{ whiteSpace: 'pre-wrap' }}>{n.text}</div>
               </div>
             ))}
@@ -988,9 +1011,16 @@ export function Counsel({ db, S, del, upd, load, focus }) {
             <tr><th>대상</th>{pick(['학생', '학부모', '친구'], target, setTarget, 'target')}</tr>
             <tr><th>방법</th>{pick(['면담', '전화', '문자/인터넷'], method, setMethod, 'method')}</tr>
             <tr><th className="tall">상담<br />내용</th><td colSpan="3" className="body"><textarea value={text} onChange={(e) => setText(e.target.value)} onBlur={() => persist()} placeholder="쓰다가 칸을 벗어나면 자동으로 저장됩니다" /></td></tr>
+            <tr><th>사진</th><td colSpan="3">
+              <label className="photobox" title={nPhoto ? '눌러서 사진 바꾸기' : '눌러서 사진 1장 넣기'} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); pickNotePhoto(e.dataTransfer.files[0]); }}>
+                {nPhoto ? <img src={nPhoto} alt="상담 사진" style={{ height: 'auto', maxHeight: 260, objectFit: 'contain' }} /> : <span><Camera size={22} /><br />사진 넣기 (1장)<br />누르거나 끌어다 놓기</span>}
+                <input type="file" accept="image/*" onChange={(e) => { pickNotePhoto(e.target.files[0]); e.target.value = ''; }} />
+              </label>
+              {nPhoto && <button type="button" className="x photodel" onClick={removeNotePhoto}>사진 삭제</button>}
+            </td></tr>
           </tbody></table>
           <div className="actions">
-            {editId ? <button type="button" onClick={() => { setEditId(null); setText(''); setDate(today()); }}>새로 쓰기</button> : <span />}
+            {editId ? <button type="button" onClick={() => { openNote(null); setText(''); setDate(today()); }}>새로 쓰기</button> : <span />}
           </div>
         </form>
       </div>

@@ -29,6 +29,7 @@ alter table memos      add column if not exists date date;
 alter table meetings   add column if not exists title text;
 alter table scores     add column if not exists mark text;
 alter table students   add column if not exists photo text;
+alter table notes      add column if not exists photo text;
 alter table students   add column if not exists parent_phone2 text;
 alter table period_notes add column if not exists struck boolean default false;
 
