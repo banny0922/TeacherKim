@@ -1182,6 +1182,19 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
     sb.from('scores').upsert({ test_id, student_id, score, mark }).then(({ error }) => (error ? alert(error.message) : saved()));
     return true;
   };
+  // 한 평가(열)의 빈 칸을 모두 같은 글자/점수로 채운다(이미 적힌 칸은 그대로). 이후 몇 명만 직접 고치면 된다.
+  const fillCol = (t) => {
+    const raw = window.prompt(`「${t.name}」의 빈 칸을 모두 채웁니다. (예: 잘함)\n이미 적힌 칸은 바뀌지 않습니다.`, '잘함');
+    const v = raw?.trim();
+    if (!v) return;
+    const num = !Number.isNaN(+v);
+    const score = num ? +v : null, mark = num ? null : v;
+    const empty = S.filter((s) => String(text(t.id, s.id)) === '');
+    if (!empty.length) return alert('빈 칸이 없습니다.');
+    const out = empty.map((s) => ({ ...(row(t.id, s.id) ?? {}), test_id: t.id, student_id: s.id, score, mark }));
+    setDb((d) => ({ ...d, scores: [...d.scores.filter((x) => !(x.test_id === t.id && empty.some((s) => s.id === x.student_id))), ...out] }));
+    sb.from('scores').upsert(out.map(({ test_id, student_id, score, mark }) => ({ test_id, student_id, score, mark }))).then(({ error }) => (error ? alert(error.message) : saved()));
+  };
   // 번호가 1~15번, 50번~처럼 크게(10 이상) 건너뛰면 그 사이에 빈 줄을 하나 둔다(샘플의 기록부처럼 한 표에서 묶음만 나눔)
   const ordered = [...S].sort((a, b) => (a.num ?? 1e9) - (b.num ?? 1e9));
   let cut = -1, gap = 0;
@@ -1341,7 +1354,7 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
               <tr className="ghead">
             {tests.map((t) => <th key={t.id}>
                   <textarea className="hname" rows="1" key={t.name} defaultValue={t.name} title="평가 이름 (눌러서 수정)" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } }} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== t.name && upd('tests', t.id, { name: e.target.value.trim() })} />
-                <input type="date" className="hdate" key={t.date ?? ''} defaultValue={t.date ?? ''} title="평가 날짜 (눌러서 수정)" onBlur={(e) => e.target.value !== (t.date ?? '') && upd('tests', t.id, { date: e.target.value || null })} /><button className="tdel" title="이 평가(열) 삭제 — 점수도 함께 지워집니다" onClick={() => del('tests', t.id, `${cur} 「${t.name}」 평가(열)를 삭제할까요?` + NLX + '모든 학생의 이 평가 점수가 함께 지워집니다.')}><Trash2 size={13} /></button></th>)}
+                <input type="date" className="hdate" key={t.date ?? ''} defaultValue={t.date ?? ''} title="평가 날짜 (눌러서 수정)" onBlur={(e) => e.target.value !== (t.date ?? '') && upd('tests', t.id, { date: e.target.value || null })} /><button className="tfill" title="빈 칸 일괄 입력 (예: 모두 잘함)" onClick={() => fillCol(t)}>일괄입력</button><button className="tdel" title="이 평가(열) 삭제 — 점수도 함께 지워집니다" onClick={() => del('tests', t.id, `${cur} 「${t.name}」 평가(열)를 삭제할까요?` + NLX + '모든 학생의 이 평가 점수가 함께 지워집니다.')}><Trash2 size={13} /></button></th>)}
           <th className="fill" /></tr>
               {ordered.map((s, i) => (
                 <Fragment key={s.id}>
