@@ -1183,9 +1183,17 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
     return true;
   };
   // 한 평가(열)의 빈 칸을 모두 같은 글자/점수로 채운다(이미 적힌 칸은 그대로). 이후 몇 명만 직접 고치면 된다.
-  const fillCol = (t) => {
-    const raw = window.prompt(`「${t.name}」의 빈 칸을 모두 채웁니다. (예: 잘함)\n이미 적힌 칸은 바뀌지 않습니다.`, '잘함');
-    const v = raw?.trim();
+  const [fillPop, setFillPop] = useState(null); // 일괄입력 창 {tid, x, y}
+  // 한 평가(열)의 점수를 모두 지운다(비고는 그대로)
+  const clearCol = (t) => {
+    const has = S.filter((s) => String(text(t.id, s.id)) !== '');
+    if (!has.length) return alert('지울 점수가 없습니다.');
+    if (!confirm(`「${t.name}」 열의 점수 ${has.length}개를 모두 지울까요?\n(비고는 그대로 남습니다)`)) return;
+    const out = has.map((s) => ({ ...(row(t.id, s.id) ?? {}), test_id: t.id, student_id: s.id, score: null, mark: null }));
+    setDb((d) => ({ ...d, scores: [...d.scores.filter((x) => !(x.test_id === t.id && has.some((s) => s.id === x.student_id))), ...out] }));
+    sb.from('scores').upsert(out.map(({ test_id, student_id, score, mark }) => ({ test_id, student_id, score, mark }))).then(({ error }) => (error ? alert(error.message) : saved()));
+  };
+  const fillCol = (t, v) => {
     if (!v) return;
     const num = !Number.isNaN(+v);
     const score = num ? +v : null, mark = num ? null : v;
@@ -1354,7 +1362,7 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
               <tr className="ghead">
             {tests.map((t) => <th key={t.id}>
                   <textarea className="hname" rows="1" key={t.name} defaultValue={t.name} title="평가 이름 (눌러서 수정)" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } }} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== t.name && upd('tests', t.id, { name: e.target.value.trim() })} />
-                <input type="date" className="hdate" key={t.date ?? ''} defaultValue={t.date ?? ''} title="평가 날짜 (눌러서 수정)" onBlur={(e) => e.target.value !== (t.date ?? '') && upd('tests', t.id, { date: e.target.value || null })} /><button className="tfill" title="빈 칸 일괄 입력 (예: 모두 잘함)" onClick={() => fillCol(t)}>일괄입력</button><button className="tdel" title="이 평가(열) 삭제 — 점수도 함께 지워집니다" onClick={() => del('tests', t.id, `${cur} 「${t.name}」 평가(열)를 삭제할까요?` + NLX + '모든 학생의 이 평가 점수가 함께 지워집니다.')}><Trash2 size={13} /></button></th>)}
+                <input type="date" className="hdate" key={t.date ?? ''} defaultValue={t.date ?? ''} title="평가 날짜 (눌러서 수정)" onBlur={(e) => e.target.value !== (t.date ?? '') && upd('tests', t.id, { date: e.target.value || null })} /><button className="tfill" title="빈 칸 일괄 입력 (예: 모두 잘함)" onClick={(e) => { const b = e.currentTarget.getBoundingClientRect(); setFillPop({ tid: t.id, x: Math.min(b.left, window.innerWidth - 270), y: b.bottom + 4 }); }}>일괄입력</button><button className="tdel" title="이 평가(열) 삭제 — 점수도 함께 지워집니다" onClick={() => del('tests', t.id, `${cur} 「${t.name}」 평가(열)를 삭제할까요?` + NLX + '모든 학생의 이 평가 점수가 함께 지워집니다.')}><Trash2 size={13} /></button></th>)}
           <th className="fill" /></tr>
               {ordered.map((s, i) => (
                 <Fragment key={s.id}>
@@ -1377,6 +1385,23 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
             </tbody></table>
           </div>
         </div>
+        {fillPop && (() => {
+          const t = db.tests.find((x) => x.id === fillPop.tid);
+          if (!t) return null;
+          const go = () => { fillCol(t, document.getElementById('filltxt').value.trim()); setFillPop(null); };
+          return (
+            <div className="notepop" style={{ left: Math.max(8, fillPop.x), top: fillPop.y }}>
+              <div className="notepopt">{t.name} · 빈 칸을 모두 채우기 (적힌 칸은 그대로)</div>
+              <input autoFocus id="filltxt" defaultValue="잘함" style={{ width: '100%', boxSizing: 'border-box', margin: 0 }}
+                onKeyDown={(e) => { if (e.key === 'Escape') setFillPop(null); if (e.key === 'Enter') go(); }} />
+              <div className="notepopb">
+                <button type="button" onClick={() => setFillPop(null)}>닫기</button>
+                <button type="button" className="danger" onClick={() => { setFillPop(null); clearCol(t); }}>일괄삭제</button>
+                <button type="button" className="primary" onClick={go}>채우기</button>
+              </div>
+            </div>
+          );
+        })()}
         {notePop && (
           <div className="notepop" style={{ left: Math.max(8, notePop.x), top: notePop.y }}>
             <div className="notepopt">{S.find((x) => x.id === notePop.sid)?.name} · {db.tests.find((x) => x.id === notePop.tid)?.name} 비고</div>
