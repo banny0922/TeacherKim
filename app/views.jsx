@@ -1390,14 +1390,17 @@ export function Grades({ db, S, add, del, upd, setDb, load }) {
           if (!t) return null;
           const go = () => { fillCol(t, document.getElementById('filltxt').value.trim()); setFillPop(null); };
           return (
-            <div className="notepop" style={{ left: Math.max(8, fillPop.x), top: fillPop.y }}>
-              <div className="notepopt">{t.name} · 빈 칸을 모두 채우기 (적힌 칸은 그대로)</div>
-              <input autoFocus id="filltxt" defaultValue="잘함" style={{ width: '100%', boxSizing: 'border-box', margin: 0 }}
-                onKeyDown={(e) => { if (e.key === 'Escape') setFillPop(null); if (e.key === 'Enter') go(); }} />
-              <div className="notepopb">
-                <button type="button" onClick={() => setFillPop(null)}>닫기</button>
-                <button type="button" className="danger" onClick={() => { setFillPop(null); clearCol(t); }}>일괄삭제</button>
-                <button type="button" className="primary" onClick={go}>채우기</button>
+            <div style={{ position: 'fixed', inset: 0, zIndex: 49, background: 'rgba(0,0,0,.4)' }} onClick={() => setFillPop(null)}>
+              <div className="notepop" onClick={(e) => e.stopPropagation()} style={{ left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 'min(380px, calc(100vw - 32px))', padding: 18 }}>
+                <div className="notepopt" style={{ fontSize: 15, color: '#333', fontWeight: 600, marginBottom: 4 }}>{t.name}</div>
+                <div className="notepopt" style={{ fontSize: 13, marginBottom: 10 }}>빈 칸을 모두 아래 값으로 채웁니다. (이미 적힌 칸은 그대로)</div>
+                <input autoFocus id="filltxt" defaultValue="잘함" style={{ width: '100%', boxSizing: 'border-box', margin: 0, fontSize: 18, padding: '10px 12px' }}
+                  onKeyDown={(e) => { if (e.key === 'Escape') setFillPop(null); if (e.key === 'Enter') go(); }} />
+                <div className="notepopb" style={{ marginTop: 14, gap: 8 }}>
+                  <button type="button" style={{ padding: '8px 16px', fontSize: 15 }} onClick={() => setFillPop(null)}>닫기</button>
+                  <button type="button" className="danger" style={{ padding: '8px 16px', fontSize: 15 }} onClick={() => { setFillPop(null); clearCol(t); }}>일괄삭제</button>
+                  <button type="button" className="primary" style={{ padding: '8px 16px', fontSize: 15 }} onClick={go}>채우기</button>
+                </div>
               </div>
             </div>
           );
